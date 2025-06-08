@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simon's Lab</title>
+
+    <script>
+        // ===== SERVICES CONFIG - ADD NEW SERVICES HERE =====
+        const services = [
+            {
+                icon: '📷',
+                title: 'Family Photos',
+                description: 'Safe backup for all our memories',
+                url: 'https://mikuda.duckdns.org:8443',
+                active: true
+            },
+            {
+                icon: '🏠',
+                title: 'Home Assistant',
+                description: 'Smart home automation & monitoring',
+                url: '#',
+                active: true
+            },
+            {
+                icon: '💾',
+                title: 'NAS Storage',
+                description: 'Family file sharing & backups',
+                url: '#',
+                active: true
+            },
+            {
+                icon: '📊',
+                title: 'System Monitor',
+                description: 'Server performance & logs',
+                url: '#',
+                active: true
+            }
+        ];
+        // ===================================================
+
+        // Generate service cards dynamically
+        function generateServiceCards() {
+            const grid = document.getElementById('servicesGrid');
+            
+            services.forEach((service, index) => {
+                const card = document.createElement('a');
+                card.href = service.url;
+                card.className = 'service-card';
+                card.style.setProperty('--delay', `${index * 0.1}s`);
+                
+                card.innerHTML = `
+                    <div class="service-icon">${service.icon}</div>
+                    <div class="service-title">${service.title}</div>
+                    <div class="service-description">
+                        ${service.active ? '<span class="status-indicator"></span>' : ''}
+                        ${service.description}
+                    </div>
+                `;
+                
+                grid.appendChild(card);
+            });
+        }
+
+        // Simple FLIP animation for responsive behavior
+        const cards = [];
+        let positions = [];
+
+        function animate() {
+            const currentCards = document.querySelectorAll('.service-card');
+            positions = Array.from(currentCards).map(card => card.getBoundingClientRect());
+            
+            requestAnimationFrame(() => {
+                currentCards.forEach((card, i) => {
+                    const newPos = card.getBoundingClientRect();
+                    const dx = positions[i].left - newPos.left;
+                    const dy = positions[i].top - newPos.top;
+                    
+                    if (dx || dy) {
+                        card.style.transform = `translate(${dx}px, ${dy}px)`;
+                        card.style.transition = 'none';
+                        
+                        requestAnimationFrame(() => {
+                            card.style.transition = 'transform 0.6s ease';
+                            card.style.transform = '';
+                        });
+                    }
+                });
+            });
+        }
+
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', () => {
+            generateServiceCards();
+        });
+
+        window.addEventListener('resize', () => {
+            clearTimeout(window.resizeTimer);
+            window.resizeTimer = setTimeout(animate, 100);
+        });
+    </script>
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: system-ui, sans-serif;
+            background: linear-gradient(135deg, #2c3e50, #34495e, #3498db);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 8px;
+            padding: 3rem;
+            max-width: 1200px;
+            width: 95%;
+            text-align: center;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(15px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .logo {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 2rem;
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, #2c3e50, #e74c3c);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 3rem;
+            opacity: 0;
+            animation: fadeIn 1s ease 0.5s forwards;
+        }
+
+        @keyframes fadeIn {
+            to { opacity: 1; }
+        }
+
+        .services-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .service-card {
+            background: linear-gradient(135deg, #2c3e50, #34495e);
+            border-radius: 6px;
+            padding: 2rem;
+            text-decoration: none;
+            color: white;
+            min-height: 180px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.3s ease;
+            opacity: 0;
+            transform: translateX(-30px);
+            animation: slideInCard 0.8s ease forwards;
+            animation-delay: var(--delay);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .service-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .service-card:hover::before {
+            left: 100%;
+        }
+
+        @keyframes slideInCard {
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .service-card:hover {
+            background: linear-gradient(135deg, #34495e, #3498db);
+            transform: translateY(-5px);
+        }
+
+        .service-icon { font-size: 3rem; margin-bottom: 1rem; }
+        .service-title { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.5rem; }
+        .service-description { opacity: 0.9; }
+
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: #4caf50;
+            border-radius: 50%;
+            margin-right: 8px;
+            animation: blink 2s infinite;
+        }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.3; }
+        }
+
+        .footer {
+            color: #888;
+            opacity: 0;
+            animation: fadeIn 1s ease 2s forwards;
+        }
+
+        @media (max-width: 768px) {
+            .container { padding: 2rem; margin: 1rem; }
+            h1 { font-size: 2rem; }
+            .services-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+
+</head>
+
+<body>
+    <div class="container">
+        <div class="logo">⚡</div>
+        <h1>Simon's Lab</h1>
+        <p class="subtitle">Family server // Code experiments // Personal projects</p>
+        
+        <div class="services-grid" id="servicesGrid">
+            <!-- Services will be dynamically generated here -->
+        </div>
+        
+        <div class="footer">
+            <p>Homelab Status: <span class="status-indicator"></span>Running</p>
+            <p>Built with ❤️ for the family</p>
+        </div>
+    </div>
+</body>
+
+</html>
