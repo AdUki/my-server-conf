@@ -54,7 +54,6 @@
                     <div class="service-icon">${service.icon}</div>
                     <div class="service-title">${service.title}</div>
                     <div class="service-description">
-                        ${service.active ? '<span class="status-indicator"></span>' : ''}
                         ${service.description}
                     </div>
                 `;
@@ -106,7 +105,7 @@
 
         body {
             font-family: system-ui, sans-serif;
-            background: linear-gradient(135deg, #2c3e50, #34495e, #3498db);
+            background: linear-gradient(135deg, #f1c40f, #f39c12, #e67e22);
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -114,13 +113,14 @@
         }
 
         .container {
-            background: rgba(255, 255, 255, 0.95);
+            background: rgba(255, 255, 240, 0.95);
             border-radius: 8px;
             padding: 3rem;
             max-width: 1200px;
             width: 95%;
             text-align: center;
             animation: slideIn 0.3s ease;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3), 0 10px 20px rgba(0, 0, 0, 0.2);
         }
 
         @keyframes slideIn {
@@ -183,7 +183,7 @@
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            transition: all 0.3s ease;
+            transition: all 0.5s ease;
             opacity: 0;
             transform: translateX(-30px);
             animation: slideInCard 0.8s ease forwards;
@@ -203,8 +203,25 @@
             transition: left 0.5s;
         }
 
+        .service-card::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            opacity: 0;
+            transition: opacity 0.5s ease;
+            z-index: -1;
+        }
+
         .service-card:hover::before {
             left: 100%;
+        }
+
+        .service-card:hover::after {
+            opacity: 1;
         }
 
         @keyframes slideInCard {
@@ -212,28 +229,12 @@
         }
 
         .service-card:hover {
-            background: linear-gradient(135deg, #34495e, #3498db);
             transform: translateY(-5px);
         }
 
         .service-icon { font-size: 3rem; margin-bottom: 1rem; }
         .service-title { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.5rem; }
         .service-description { opacity: 0.9; }
-
-        .status-indicator {
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            background: #4caf50;
-            border-radius: 50%;
-            margin-right: 8px;
-            animation: blink 2s infinite;
-        }
-
-        @keyframes blink {
-            0%, 50% { opacity: 1; }
-            51%, 100% { opacity: 0.3; }
-        }
 
         .footer {
             color: #888;
@@ -261,7 +262,6 @@
         </div>
         
         <div class="footer">
-            <p>Homelab Status: <span class="status-indicator"></span>Running</p>
             <p>Built with ❤️ for the family</p>
         </div>
     </div>
