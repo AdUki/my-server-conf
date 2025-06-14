@@ -1,0 +1,43 @@
+services:
+  # Note: MariaDB is external service. You can find more information about the configuration here:
+  # https://hub.docker.com/_/mariadb
+  db:
+    # Note: Check the recommend version here: https://docs.nextcloud.com/server/latest/admin_manual/installation/system_requirements.html#server
+    image: mariadb:11.4
+    restart: always
+    command: --transaction-isolation=READ-COMMITTED
+    volumes:
+      - /media/data/nextcloud/db:/var/lib/mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=changeme123
+      - MYSQL_PASSWORD=changeme123
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+
+  # Note: Redis is an external service. You can find more information about the configuration here:
+  # https://hub.docker.com/_/redis
+  redis:
+    image: redis:alpine
+    restart: always
+
+  app:
+    image: nextcloud
+    restart: always
+    ports:
+      - 8001:80
+    depends_on:
+      - redis
+      - db
+    volumes:
+      - /media/data/nextcloud/html:/var/www/html
+    environment:
+      - MYSQL_PASSWORD=changeme123
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+      - MYSQL_HOST=db
+      - REDIS_HOST=redis
+      - PHP_MEMORY_LIMIT=1G
+      - PHP_UPLOAD_LIMIT=10G
+      - APACHE_BODY_LIMIT=10737418240
+      - NEXTCLOUD_TRUSTED_DOMAINS=localhost 192.168.1.100:8001 nextcloud.mikuda.duckdns.org
+
