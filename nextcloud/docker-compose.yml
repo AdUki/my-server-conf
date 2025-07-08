@@ -40,4 +40,3 @@ services:
       - PHP_UPLOAD_LIMIT=10G
       - APACHE_BODY_LIMIT=10737418240
       - NEXTCLOUD_TRUSTED_DOMAINS=localhost 192.168.1.100:8001 nextcloud.mikuda.duckdns.org
-

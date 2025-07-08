@@ -304,18 +304,6 @@ install_immich() {
 }
 
 ###############################################################################
-install_nginx() {
-	log "Installing Nginx..."
-
-	sudo apt-get install -y nginx
-
-	sudo rsync -avr "$SCRIPT_DIR/nginx/www" /var/
-	set_conf_file /etc/nginx/sites-available/default nginx/default
-	sudo nginx -t && sudo systemctl restart nginx
-
-	log "Nginx installed!"
-}
-###############################################################################
 install_nginxproxymanager() {
 	log "Installing Nginxproxymanager..."
 
@@ -326,6 +314,25 @@ install_nginxproxymanager() {
 }
 
 ###############################################################################
+install_system_monitor() {
+	log "Installing System monitor..."
+
+	cd $PWD
+
+	git clone https://github.com/AdUki/system-monitor.git || true
+	cd system-monitor
+	git pull
+
+	mkdir -p prometheus/data grafana/data && \
+	sudo chown -R 472:472 grafana/ && \
+	sudo chown -R 65534:65534 prometheus/
+
+	docker compose up -d
+
+	log "System monitor installed!"
+}
+
+###############################################################################
 # Check if running as root
 if [[ $EUID -eq 0 ]]; then
    error "This script should not be run as root. Please run as pi user."
@@ -333,17 +340,17 @@ fi
 
 log "Starting Raspberry Pi Server Setup..."
 
-#load_configuration
-#setup_essential_packages
-#configure_locales
-#setup_external_drive
-#setup_groups
-#install_cups
-#install_samba
-#install_transmission
-#install_docker
-#install_immich
-#install_nginx
+load_configuration
+setup_essential_packages
+configure_locales
+setup_external_drive
+setup_groups
+install_cups
+install_samba
+install_transmission
+install_docker
+install_immich
 install_nginxproxymanager
+install_system_monitor
 
 log "All done"
