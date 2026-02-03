@@ -30,10 +30,10 @@ set_conf_line_to_file() {
 	# Check if a line containing the id exists
 	if grep -q "$id" "$file" 2>/dev/null; then
 		# Replace the line containing the id
-		sed -i "/$id/c $line" "$file"
+		sudo sed -i "/$id/c $line" "$file"
 	else
 		# Add the line to the end of file
-		echo "$line" >> "$file"
+		echo "$line" | sudo tee -a "$file" > /dev/null
 	fi
 }
 
@@ -53,8 +53,7 @@ set_conf_file() {
 			sudo cp "$target_file" "$backup_name"
 			log "Created backup: $backup_name"
 		else
-			log "Warning: Target file $target_file does not exist"
-			return 1
+			warn "Target file $target_file does not exist, no backup created"
 		fi
 	fi
 
@@ -116,45 +115,46 @@ setup_external_drive() {
 	# Mount the device
 	if ! mountpoint -q /media/data; then
 		log "Mounting /media/data..."
+		sudo mkdir -p /media/data
 		sudo mount /media/data
 	fi
 
-	sudo mkdir $STORAGE_ROOT/cartoons
-	sudo mkdir $STORAGE_ROOT/documents
-	sudo mkdir $STORAGE_ROOT/downloads
-	sudo mkdir $STORAGE_ROOT/icons
-	sudo mkdir $STORAGE_ROOT/movies
-	sudo mkdir $STORAGE_ROOT/music
-	sudo mkdir $STORAGE_ROOT/pictures
-	sudo mkdir $STORAGE_ROOT/retropie
-	sudo mkdir $STORAGE_ROOT/rtorrent
-	sudo mkdir $STORAGE_ROOT/tvshows
-	sudo mkdir $STORAGE_ROOT/videos
+	sudo mkdir -p $STORAGE_ROOT/cartoons
+	sudo mkdir -p $STORAGE_ROOT/documents
+	sudo mkdir -p $STORAGE_ROOT/downloads
+	sudo mkdir -p $STORAGE_ROOT/icons
+	sudo mkdir -p $STORAGE_ROOT/movies
+	sudo mkdir -p $STORAGE_ROOT/music
+	sudo mkdir -p $STORAGE_ROOT/pictures
+	sudo mkdir -p $STORAGE_ROOT/retropie
+	sudo mkdir -p $STORAGE_ROOT/rtorrent
+	sudo mkdir -p $STORAGE_ROOT/tvshows
+	sudo mkdir -p $STORAGE_ROOT/videos
 
-	sudo chown pi:pi $STORAGE_ROOT/cartoons
-	sudo chown pi:pi $STORAGE_ROOT/documents
-	sudo chown pi:pi $STORAGE_ROOT/downloads
-	sudo chown pi:pi $STORAGE_ROOT/icons
-	sudo chown pi:pi $STORAGE_ROOT/movies
-	sudo chown pi:pi $STORAGE_ROOT/music
-	sudo chown pi:pi $STORAGE_ROOT/pictures
-	sudo chown pi:pi $STORAGE_ROOT/retropie
-	sudo chown pi:pi $STORAGE_ROOT/rtorrent
-	sudo chown pi:pi $STORAGE_ROOT/tvshows
-	sudo chown pi:pi $STORAGE_ROOT/videos
+	sudo chown -f pi:pi $STORAGE_ROOT/cartoons 2>/dev/null || true
+	sudo chown -f pi:pi $STORAGE_ROOT/documents 2>/dev/null || true
+	sudo chown -f pi:pi $STORAGE_ROOT/downloads 2>/dev/null || true
+	sudo chown -f pi:pi $STORAGE_ROOT/icons 2>/dev/null || true
+	sudo chown -f pi:pi $STORAGE_ROOT/movies 2>/dev/null || true
+	sudo chown -f pi:pi $STORAGE_ROOT/music 2>/dev/null || true
+	sudo chown -f pi:pi $STORAGE_ROOT/pictures 2>/dev/null || true
+	sudo chown -f pi:pi $STORAGE_ROOT/retropie 2>/dev/null || true
+	sudo chown -f pi:pi $STORAGE_ROOT/rtorrent 2>/dev/null || true
+	sudo chown -f pi:pi $STORAGE_ROOT/tvshows 2>/dev/null || true
+	sudo chown -f pi:pi $STORAGE_ROOT/videos 2>/dev/null || true
 
 	cd $HOME
-	ln -s $STORAGE_ROOT/cartoons 
-	ln -s $STORAGE_ROOT/documents
-	ln -s $STORAGE_ROOT/downloads
-	ln -s $STORAGE_ROOT/icons
-	ln -s $STORAGE_ROOT/movies
-	ln -s $STORAGE_ROOT/music
-	ln -s $STORAGE_ROOT/pictures
-	ln -s $STORAGE_ROOT/retropie
-	ln -s $STORAGE_ROOT/rtorrent
-	ln -s $STORAGE_ROOT/tvshows
-	ln -s $STORAGE_ROOT/videos
+	ln -sf $STORAGE_ROOT/cartoons cartoons
+	ln -sf $STORAGE_ROOT/documents documents
+	ln -sf $STORAGE_ROOT/downloads downloads
+	ln -sf $STORAGE_ROOT/icons icons
+	ln -sf $STORAGE_ROOT/movies movies
+	ln -sf $STORAGE_ROOT/music music
+	ln -sf $STORAGE_ROOT/pictures pictures
+	ln -sf $STORAGE_ROOT/retropie retropie
+	ln -sf $STORAGE_ROOT/rtorrent rtorrent
+	ln -sf $STORAGE_ROOT/tvshows tvshows
+	ln -sf $STORAGE_ROOT/videos videos
 	cd -
 }
 
@@ -288,10 +288,15 @@ install_immich() {
 	mkdir -p /home/pi/apps
 	cd /home/pi/apps
 
-	curl -o- https://raw.githubusercontent.com/immich-app/immich/main/install.sh | bash
+	# Check if Immich is already installed
+	if [ -d "/home/pi/apps/immich-app" ] && [ -f "/home/pi/apps/immich-app/docker-compose.yml" ]; then
+		log "Immich is already installed, skipping installation..."
+	else
+		curl -o- https://raw.githubusercontent.com/immich-app/immich/main/install.sh | bash
+	fi
 
 	sudo mkdir -p $STORAGE_ROOT/immich
-	sudo chown pi:pi $STORAGE_ROOT/immich
+	sudo chown -f pi:pi $STORAGE_ROOT/immich 2>/dev/null || true
 
 	# Update Immich .env file to use external storage
 	if [ -f "/home/pi/apps/immich-app/.env" ]; then
@@ -319,13 +324,19 @@ install_system_monitor() {
 
 	cd $PWD
 
-	git clone https://github.com/AdUki/system-monitor.git || true
-	cd system-monitor
-	git pull
+	if [ -d "system-monitor" ]; then
+		log "System monitor directory exists, updating..."
+		cd system-monitor
+		git pull
+	else
+		log "Cloning system monitor repository..."
+		git clone https://github.com/AdUki/system-monitor.git
+		cd system-monitor
+	fi
 
-	mkdir -p prometheus/data grafana/data && \
-	sudo chown -R 472:472 grafana/ && \
-	sudo chown -R 65534:65534 prometheus/
+	mkdir -p prometheus/data grafana/data
+	sudo chown -Rf 472:472 grafana/ 2>/dev/null || true
+	sudo chown -Rf 65534:65534 prometheus/ 2>/dev/null || true
 
 	docker compose up -d
 
