@@ -1,0 +1,16 @@
+[Unit]
+Description=Kodi Media Center
+After=multi-user.target sound.target network.target
+Wants=network.target
+
+[Service]
+User=pi
+Group=audio
+Type=simple
+ExecStart=/usr/bin/kodi-standalone
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

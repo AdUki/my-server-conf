@@ -1,5 +1,10 @@
 *.backup
 *.tmp
+config.local.conf
 nginxproxymanager/data/
 nginxproxymanager/letsencrypt/
 system-monitor/
+immich/.env
+immich/library/
+immich/postgres/
+immich/immich-app/

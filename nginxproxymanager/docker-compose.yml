@@ -3,10 +3,13 @@ services:
     image: 'jc21/nginx-proxy-manager:latest'
     restart: unless-stopped
     ports:
-      - '80:80' # Public HTTP Port
-      - '443:443' # Public HTTPS Port
-      - '81:81' # Admin Web Port
-
+      - '80:80'   # Public HTTP
+      - '443:443' # Public HTTPS
+      - '81:81'   # Admin Web UI
     volumes:
       - ./data:/data
       - ./letsencrypt:/etc/letsencrypt
+      # Landing page for un-routed hostnames. NPM serves /var/www/html/index.html
+      # as the "default site" until one is configured in the Admin UI; we
+      # commandeer that path with a read-only bind.
+      - ../index.html:/var/www/html/index.html:ro

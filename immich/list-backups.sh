@@ -1,8 +1,9 @@
 #!/bin/bash
-
 set -e
-
-source .env
+SCRIPT_DIR="$(realpath "$(dirname "$0")")"
+cd "$SCRIPT_DIR"
+source "$SCRIPT_DIR/.env"
+source "$SCRIPT_DIR/_backup-mount.sh"
 
 borg info "$BACKUP_PATH"/immich-borg
 

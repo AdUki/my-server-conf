@@ -1,0 +1,30 @@
+# Secrets and per-deployment values. Copy this file to config.local.conf and
+# fill in real values. config.local.conf is gitignored.
+
+# Samba password for user 'pi'. Required by install_samba on first run.
+SAMBA_PI_PASSWORD=""
+
+# Nginx Proxy Manager admin credentials. seed.sh either bootstraps from the
+# upstream defaults (admin@example.com / changeme) and rotates to these, or
+# logs in directly with them on subsequent runs.
+NPM_ADMIN_EMAIL=""
+NPM_ADMIN_PASSWORD=""
+
+# DuckDNS API token. Used by NPM seed.sh for the DNS-01 wildcard cert challenge.
+# Find/generate at https://www.duckdns.org
+DUCKDNS_TOKEN=""
+
+# Immich Postgres password. Must match the value originally used to initialise
+# the database (otherwise existing data won't decrypt). Generate a fresh one
+# only for a brand-new deployment with: openssl rand -hex 24
+IMMICH_DB_PASSWORD=""
+
+# Immich admin user (created via the web UI on first launch). Recorded here so
+# tooling like immich-go can authenticate without prompting.
+IMMICH_ADMIN_EMAIL=""
+IMMICH_ADMIN_PASSWORD=""
+
+# Immich API key for programmatic access (created in the Immich Web UI under
+# Account Settings > API Keys). Not used by setup.sh today; staged for future
+# helper scripts (album management, immich-go uploads, etc.).
+IMMICH_API_KEY=""

@@ -17,10 +17,10 @@
                 active: true
             },
             {
-                icon: '🏠',
-                title: 'Home Assistant',
-                description: 'Smart home automation & monitoring',
-                url: '#',
+                icon: '🌎',
+                title: 'Nginx Proxy Manager',
+                description: 'Expose your services easily and securely',
+                url: 'http://192.168.1.100:81',
                 active: true
             },
             {
@@ -34,7 +34,28 @@
                 icon: '📊',
                 title: 'System Monitor',
                 description: 'Server performance & logs',
-                url: '#',
+                url: 'https://graphana.mikuda.duckdns.org',
+                active: true
+            },
+            {
+                icon: '꩜',
+                title: 'Transmission',
+                description: 'A Fast, Easy and Free Bittorrent Client',
+                url: 'http://192.168.1.100:9091/transmission/web/',
+                active: true
+            },
+            {
+                icon: '🖨',
+                title: 'CUPS',
+                description: 'The standards-based, open source printing system',
+                url: 'https://192.168.1.100:631/admin',
+                active: true
+            },
+            {
+                icon: '📺',
+                title: 'Kodi',
+                description: 'Open Source Home Theater Software',
+                url: 'http://192.168.1.100:8081',
                 active: true
             }
         ];
@@ -43,13 +64,13 @@
         // Generate service cards dynamically
         function generateServiceCards() {
             const grid = document.getElementById('servicesGrid');
-            
+
             services.forEach((service, index) => {
                 const card = document.createElement('a');
                 card.href = service.url;
                 card.className = 'service-card';
                 card.style.setProperty('--delay', `${index * 0.1}s`);
-                
+
                 card.innerHTML = `
                     <div class="service-icon">${service.icon}</div>
                     <div class="service-title">${service.title}</div>
@@ -57,7 +78,7 @@
                         ${service.description}
                     </div>
                 `;
-                
+
                 grid.appendChild(card);
             });
         }
@@ -69,17 +90,17 @@
         function animate() {
             const currentCards = document.querySelectorAll('.service-card');
             positions = Array.from(currentCards).map(card => card.getBoundingClientRect());
-            
+
             requestAnimationFrame(() => {
                 currentCards.forEach((card, i) => {
                     const newPos = card.getBoundingClientRect();
                     const dx = positions[i].left - newPos.left;
                     const dy = positions[i].top - newPos.top;
-                    
+
                     if (dx || dy) {
                         card.style.transform = `translate(${dx}px, ${dy}px)`;
                         card.style.transition = 'none';
-                        
+
                         requestAnimationFrame(() => {
                             card.style.transition = 'transform 0.6s ease';
                             card.style.transform = '';
@@ -256,11 +277,11 @@
         <div class="logo">⚡</div>
         <h1>Simon's Lab</h1>
         <p class="subtitle">Family server // Code experiments // Personal projects</p>
-        
+
         <div class="services-grid" id="servicesGrid">
             <!-- Services will be dynamically generated here -->
         </div>
-        
+
         <div class="footer">
             <p>Built with ❤️ for the family</p>
         </div>
