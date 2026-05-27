@@ -65,6 +65,19 @@ apt_get() {
 		apt-get "$@"
 }
 
+# Install packages only if any are missing. Filters out fully-installed sets
+# to keep --dry-run noise down. Pass package names as positional args.
+apt_get_install() {
+	local missing=() pkg
+	for pkg in "$@"; do
+		if ! dpkg-query -W -f='${Status}\n' "$pkg" 2>/dev/null | grep -q '^install ok installed$'; then
+			missing+=("$pkg")
+		fi
+	done
+	[ ${#missing[@]} -eq 0 ] && return 0
+	apt_get install -y "${missing[@]}"
+}
+
 ###############################################################################
 # Escape a string so it can be used as a sed address (between // delimiters
 # where we substitute | for /). Handles the BRE metacharacters and our
@@ -231,7 +244,7 @@ setup_essential_packages() {
 	apt_get upgrade -y
 
 	log "Installing essential packages..."
-	apt_get install -y neovim curl wget rsync jq $INSTALL_PACKAGES
+	apt_get_install neovim curl wget rsync jq $INSTALL_PACKAGES
 }
 
 ###############################################################################
@@ -355,7 +368,7 @@ setup_storage_dirs() {
 ###############################################################################
 configure_locales() {
 	log "Configuring locales..."
-	apt_get install -y locales
+	apt_get_install locales
 
 	# update-locale validates against /etc/locale.gen. Make sure both required
 	# locales are uncommented there before we run it.
@@ -424,7 +437,7 @@ setup_groups() {
 ###############################################################################
 install_cups() {
 	log "Installing CUPS..."
-	apt_get install -y cups
+	apt_get_install cups
 
 	local current
 	current=$(sudo cupsctl 2>/dev/null || true)
@@ -439,7 +452,7 @@ install_cups() {
 ###############################################################################
 install_samba() {
 	log "Installing Samba..."
-	apt_get install -y samba samba-common-bin
+	apt_get_install samba samba-common-bin
 
 	local changed=0
 
@@ -466,7 +479,7 @@ install_samba() {
 ###############################################################################
 install_transmission() {
 	log "Installing Transmission..."
-	apt_get install -y transmission-daemon
+	apt_get_install transmission-daemon
 
 	local conf_file=/etc/transmission-daemon/settings.json
 	local unit_file=/lib/systemd/system/transmission-daemon.service
@@ -675,9 +688,9 @@ install_kodi() {
 	# present. Raspberry Pi OS users typically run `kodi21` from the RPi
 	# repos (newer than Debian's `kodi` 20.x); we must not downgrade them.
 	if ! command -v kodi-standalone >/dev/null; then
-		apt_get install -y kodi
+		apt_get_install kodi
 	fi
-	apt_get install -y xmlstarlet
+	apt_get_install xmlstarlet
 
 	# 1. Systemd unit. set_conf_file returns 0 on actual change.
 	if set_conf_file /etc/systemd/system/kodi.service "$SCRIPT_DIR/kodi/kodi.service"; then
