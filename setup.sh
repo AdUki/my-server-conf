@@ -585,13 +585,11 @@ _kodi_set_setting() {
 	local file="$1" id="$2" val="$3"
 	local current
 	current=$(xmlstarlet sel -t -v "//setting[@id='$id']" "$file" 2>/dev/null || true)
+	# Kodi re-writes guisettings on exit, and re-adds a `default="true"` attribute
+	# whenever the stored value matches its built-in default. We don't care about
+	# that attribute — only the value matters. Return "no change" when value
+	# already matches.
 	if [ "$current" = "$val" ]; then
-		# Already correct value, but also strip the `default="true"` attribute
-		# if present so Kodi keeps our value across restarts.
-		if xmlstarlet sel -t -v "//setting[@id='$id']/@default" "$file" 2>/dev/null | grep -q .; then
-			run xmlstarlet ed -L -d "//setting[@id='$id']/@default" "$file"
-			return 0
-		fi
 		return 1
 	fi
 	if xmlstarlet sel -t -c "//setting[@id='$id']" "$file" >/dev/null 2>&1; then
