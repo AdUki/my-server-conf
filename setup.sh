@@ -610,7 +610,13 @@ _kodi_set_setting() {
 
 install_kodi() {
 	log "Installing Kodi..."
-	apt_get install -y kodi xmlstarlet
+	# Only install the Debian `kodi` metapackage if Kodi isn't already
+	# present. Raspberry Pi OS users typically run `kodi21` from the RPi
+	# repos (newer than Debian's `kodi` 20.x); we must not downgrade them.
+	if ! command -v kodi-standalone >/dev/null; then
+		apt_get install -y kodi
+	fi
+	apt_get install -y xmlstarlet
 
 	# 1. Systemd unit. set_conf_file returns 0 on actual change.
 	if set_conf_file /etc/systemd/system/kodi.service "$SCRIPT_DIR/kodi/kodi.service"; then
