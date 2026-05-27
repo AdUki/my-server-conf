@@ -784,12 +784,12 @@ install_system_monitor() {
 		run git clone https://github.com/AdUki/system-monitor.git "$sm_dir"
 	fi
 
-	ensure_dir "$sm_dir/prometheus/data"
-	ensure_dir "$sm_dir/grafana/data"
-	ensure_owner_recursive "$sm_dir/grafana" 472:472
-	ensure_owner_recursive "$sm_dir/prometheus" 65534:65534
+	# Both prometheus and grafana data live in named Docker volumes (managed
+	# by the container's own UID); the bind-mounted dirs (./prometheus,
+	# ./grafana/provisioning) only carry config, which Docker reads with
+	# default permissions. No mkdir or chown of the working tree needed.
 
-	( cd "$sm_dir" && run sudo docker compose up -d )
+	( cd "$sm_dir" && run sudo docker compose up -d --build )
 }
 
 ###############################################################################
