@@ -19,12 +19,30 @@ error() {
 }
 
 ###############################################################################
+usage() {
+	cat <<EOF
+Usage: $(basename "$0") [OPTIONS]
+
+Idempotent provisioning for the Raspberry Pi media/home server. Re-running
+on an already-configured host should produce zero changes.
+
+Options:
+  -h, --help     Show this help and exit.
+      --dry-run  Print every side-effecting command instead of running it.
+
+Environment:
+  SETUP_SKIP_NPM_SEED=1   Skip the nginx-proxy-manager API bootstrap
+                          (admin rotation, proxy hosts, wildcard cert).
+EOF
+}
+
 # --dry-run mode: echo side-effecting commands instead of running them.
 DRY_RUN=0
 for arg in "$@"; do
 	case "$arg" in
+		-h|--help) usage; exit 0 ;;
 		--dry-run) DRY_RUN=1 ;;
-		*) error "Unknown argument: $arg" ;;
+		*) error "Unknown argument: $arg (try --help)" ;;
 	esac
 done
 
@@ -125,6 +143,49 @@ jq_inplace() {
 	return 0
 }
 
+# Idempotent state helpers: short-circuit silently when the desired state is
+# already in place. Keeps --dry-run output focused on actual changes.
+ensure_dir() {
+	[ -d "$1" ] && return 0
+	run sudo mkdir -p "$1"
+}
+ensure_owner() {
+	local path="$1" owner="$2"
+	[ -e "$path" ] || return 0
+	local current
+	current=$(stat -c '%u:%g' "$path" 2>/dev/null || true)
+	# Translate "pi:pi" / "472:472" / "65534:65534" — accept either form.
+	if [[ "$owner" == *:* ]] && [[ "$owner" != [0-9]*:[0-9]* ]]; then
+		local want
+		want=$(id -u "${owner%:*}" 2>/dev/null):$(getent group "${owner#*:}" | cut -d: -f3)
+		[ "$current" = "$want" ] && return 0
+	else
+		[ "$current" = "$owner" ] && return 0
+	fi
+	run sudo chown -fh "$owner" "$path" 2>/dev/null || true
+}
+ensure_owner_recursive() {
+	local path="$1" owner="$2"
+	[ -e "$path" ] || return 0
+	# Cheap heuristic: if the top dir is already correctly owned, assume the
+	# tree is too. Full recursive stat would defeat the optimization.
+	local current
+	current=$(stat -c '%u:%g' "$path" 2>/dev/null || true)
+	local want
+	if [[ "$owner" == *:* ]] && [[ "$owner" != [0-9]*:[0-9]* ]]; then
+		want=$(id -u "${owner%:*}" 2>/dev/null):$(getent group "${owner#*:}" | cut -d: -f3)
+	else
+		want="$owner"
+	fi
+	[ "$current" = "$want" ] && return 0
+	run sudo chown -Rfh "$owner" "$path" 2>/dev/null || true
+}
+ensure_symlink() {
+	local target="$1" link="$2"
+	[ "$(readlink "$link" 2>/dev/null)" = "$target" ] && return 0
+	run ln -sfn "$target" "$link"
+}
+
 ###############################################################################
 load_configuration() {
 	SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -208,7 +269,7 @@ _mount_labeled() {
 	fi
 	_ensure_fstab "$label" "$mount" "$fs" "defaults,noatime" "0" "1"
 	if ! mountpoint -q "$mount"; then
-		run sudo mkdir -p "$mount"
+		ensure_dir "$mount"
 		run sudo mount "$mount"
 	fi
 	return 0
@@ -259,7 +320,7 @@ setup_disks() {
 			local fs; fs=$(_partition_fstype "$BACKUP_PARTITION_LABEL")
 			_ensure_fstab "$BACKUP_PARTITION_LABEL" /media/backup "$fs" \
 				"defaults,noatime,noauto,nofail" "0" "0"
-			run sudo mkdir -p /media/backup
+			ensure_dir /media/backup
 			BACKUP_MOUNTPOINT=/media/backup
 			log "BACKUP disk configured at /media/backup (mounted on demand)"
 		else
@@ -276,8 +337,8 @@ setup_storage_dirs() {
 	local dirs=(cartoons documents downloads icons movies music pictures retropie rtorrent tvshows videos)
 	local d
 	for d in "${dirs[@]}"; do
-		run sudo mkdir -p "$STORAGE_ROOT/$d"
-		run sudo chown -fh pi:pi "$STORAGE_ROOT/$d" 2>/dev/null || true
+		ensure_dir "$STORAGE_ROOT/$d"
+		ensure_owner "$STORAGE_ROOT/$d" pi:pi
 	done
 
 	# Skip making $HOME/foo a symlink to $STORAGE_ROOT/foo when they're the
@@ -287,7 +348,7 @@ setup_storage_dirs() {
 	fi
 
 	for d in "${dirs[@]}"; do
-		run ln -sfn "$STORAGE_ROOT/$d" "$HOME/$d"
+		ensure_symlink "$STORAGE_ROOT/$d" "$HOME/$d"
 	done
 }
 
@@ -520,8 +581,10 @@ install_immich() {
 	log "Installing Immich (storage at $IMMICH_STORAGE_ROOT)..."
 
 	# Ensure storage directories exist
-	run sudo mkdir -p "$IMMICH_STORAGE_ROOT/library" "$IMMICH_STORAGE_ROOT/postgres"
-	run sudo chown -fh pi:pi "$IMMICH_STORAGE_ROOT" "$IMMICH_STORAGE_ROOT/library" 2>/dev/null || true
+	ensure_dir "$IMMICH_STORAGE_ROOT/library"
+	ensure_dir "$IMMICH_STORAGE_ROOT/postgres"
+	ensure_owner "$IMMICH_STORAGE_ROOT" pi:pi
+	ensure_owner "$IMMICH_STORAGE_ROOT/library" pi:pi
 
 	local immich_dir="$SCRIPT_DIR/immich"
 	local env_file="$immich_dir/.env"
@@ -630,7 +693,7 @@ install_kodi() {
 
 	# 2. Sources — write once. Don't clobber the user's library on later runs.
 	local userdata="$HOME/.kodi/userdata"
-	run mkdir -p "$userdata"
+	ensure_dir "$userdata"
 	if [ ! -f "$userdata/sources.xml" ]; then
 		log "Writing initial $userdata/sources.xml"
 		run bash -c "sed 's|@STORAGE_ROOT@|$STORAGE_ROOT|g' '$SCRIPT_DIR/kodi/sources.xml.template' > '$userdata/sources.xml'"
@@ -639,32 +702,50 @@ install_kodi() {
 	# 3. guisettings.xml — patch idempotently. Kodi rewrites this file on
 	# clean exit, so we must stop Kodi before editing or our changes are lost.
 	local gui="$userdata/guisettings.xml"
-	if [ -f "$gui" ]; then
-		# One-time backup before any in-place edits.
-		[ -f "$gui.pre-migrate.bak" ] || run cp "$gui" "$gui.pre-migrate.bak"
-
-		local kodi_was_running=0
-		if systemctl is-active --quiet kodi.service 2>/dev/null; then
-			kodi_was_running=1
-			run sudo systemctl stop kodi.service
-		fi
-
-		local changed=0
-		_kodi_set_setting "$gui" services.webserver true && changed=1
-		_kodi_set_setting "$gui" services.webserverport 8081 && changed=1
-		_kodi_set_setting "$gui" services.webserverauthentication false && changed=1
-		_kodi_set_setting "$gui" services.esenabled true && changed=1
-		_kodi_set_setting "$gui" services.esallinterfaces true && changed=1
-
-		if [ $kodi_was_running -eq 1 ]; then
-			run sudo systemctl start kodi.service
-		fi
-		if [ $changed -eq 1 ]; then
-			log "Kodi guisettings updated; restarted kodi.service to pick them up."
-		fi
-	else
+	if [ ! -f "$gui" ]; then
 		log "Kodi guisettings.xml not present yet. Start Kodi once (the kodi.service will do it once a display is attached) and re-run setup.sh to apply remote-control settings."
+		return 0
 	fi
+
+	# Pre-check: only stop/start kodi when an actual setting differs.
+	local want_settings=(
+		"services.webserver=true"
+		"services.webserverport=8081"
+		"services.webserverauthentication=false"
+		"services.esenabled=true"
+		"services.esallinterfaces=true"
+	)
+	local need_change=0 kv id val current
+	for kv in "${want_settings[@]}"; do
+		id="${kv%%=*}"; val="${kv#*=}"
+		current=$(xmlstarlet sel -t -v "//setting[@id='$id']" "$gui" 2>/dev/null || true)
+		if [ "$current" != "$val" ]; then
+			need_change=1
+			break
+		fi
+	done
+
+	if [ $need_change -eq 0 ]; then
+		return 0
+	fi
+
+	# One-time backup before any in-place edits.
+	[ -f "$gui.pre-migrate.bak" ] || run cp "$gui" "$gui.pre-migrate.bak"
+
+	local kodi_was_running=0
+	if systemctl is-active --quiet kodi.service 2>/dev/null; then
+		kodi_was_running=1
+		run sudo systemctl stop kodi.service
+	fi
+
+	for kv in "${want_settings[@]}"; do
+		_kodi_set_setting "$gui" "${kv%%=*}" "${kv#*=}" || true
+	done
+
+	if [ $kodi_was_running -eq 1 ]; then
+		run sudo systemctl start kodi.service
+	fi
+	log "Kodi guisettings updated; restarted kodi.service to pick them up."
 }
 
 install_nginxproxymanager() {
@@ -690,9 +771,10 @@ install_system_monitor() {
 		run git clone https://github.com/AdUki/system-monitor.git "$sm_dir"
 	fi
 
-	run mkdir -p "$sm_dir/prometheus/data" "$sm_dir/grafana/data"
-	run sudo chown -Rfh 472:472 "$sm_dir/grafana/" 2>/dev/null || true
-	run sudo chown -Rfh 65534:65534 "$sm_dir/prometheus/" 2>/dev/null || true
+	ensure_dir "$sm_dir/prometheus/data"
+	ensure_dir "$sm_dir/grafana/data"
+	ensure_owner_recursive "$sm_dir/grafana" 472:472
+	ensure_owner_recursive "$sm_dir/prometheus" 65534:65534
 
 	( cd "$sm_dir" && run sudo docker compose up -d )
 }
