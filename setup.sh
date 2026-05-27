@@ -788,8 +788,13 @@ install_system_monitor() {
 	# by the container's own UID); the bind-mounted dirs (./prometheus,
 	# ./grafana/provisioning) only carry config, which Docker reads with
 	# default permissions. No mkdir or chown of the working tree needed.
+	#
+	# The smartctl-exporter image is built locally from ./smartctl-exporter/
+	# (upstream's image is amd64-only). First `up -d` triggers the build;
+	# after a Dockerfile change run `docker compose build smartctl-exporter`
+	# manually to refresh.
 
-	( cd "$sm_dir" && run sudo docker compose up -d --build )
+	( cd "$sm_dir" && run sudo docker compose up -d )
 }
 
 ###############################################################################
