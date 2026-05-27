@@ -794,7 +794,29 @@ install_system_monitor() {
 	# after a Dockerfile change run `docker compose build smartctl-exporter`
 	# manually to refresh.
 
+	# Seed Grafana admin credentials from config.local.conf into the env
+	# file the container reads on first start.
+	local env_file="$sm_dir/grafana/.env"
+	if [ -n "${GRAFANA_ADMIN_USER:-}" ]; then
+		set_conf_line_to_file "$env_file" "GF_SECURITY_ADMIN_USER=" \
+			"GF_SECURITY_ADMIN_USER=$GRAFANA_ADMIN_USER"
+	fi
+	if [ -n "${GRAFANA_ADMIN_PASSWORD:-}" ]; then
+		set_conf_line_to_file "$env_file" "GF_SECURITY_ADMIN_PASSWORD=" \
+			"GF_SECURITY_ADMIN_PASSWORD=$GRAFANA_ADMIN_PASSWORD"
+	fi
+
 	( cd "$sm_dir" && run sudo docker compose up -d )
+
+	# Env vars only seed the initial admin on a fresh data volume; once the
+	# user exists, Grafana's bcrypt-hashed password lives in the SQLite DB.
+	# Use the CLI to reset it idempotently (same value = no observable change).
+	if [ -n "${GRAFANA_ADMIN_PASSWORD:-}" ] && \
+	   sudo docker ps --filter "name=^monitoring-grafana$" --format '{{.Names}}' 2>/dev/null | grep -qx monitoring-grafana; then
+		run sudo docker exec monitoring-grafana \
+			grafana cli --homepath /usr/share/grafana \
+			admin reset-admin-password "$GRAFANA_ADMIN_PASSWORD" >/dev/null
+	fi
 }
 
 ###############################################################################

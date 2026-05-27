@@ -28,3 +28,11 @@ IMMICH_ADMIN_PASSWORD=""
 # Account Settings > API Keys). Not used by setup.sh today; staged for future
 # helper scripts (album management, immich-go uploads, etc.).
 IMMICH_API_KEY=""
+
+# Grafana admin credentials. The user/password are written into
+# system-monitor/grafana/.env so a fresh container picks them up on first
+# start; on subsequent runs setup.sh also calls `grafana cli` to reset the
+# password idempotently (Grafana stores the bcrypt hash in its DB, so env
+# vars alone wouldn't update an existing admin).
+GRAFANA_ADMIN_USER=""
+GRAFANA_ADMIN_PASSWORD=""
