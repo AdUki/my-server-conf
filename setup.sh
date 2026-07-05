@@ -767,6 +767,18 @@ install_nginxproxymanager() {
 	# inside the container as the default landing page; no extra step here.
 	( cd "$SCRIPT_DIR/nginxproxymanager" && run sudo docker compose up -d )
 
+	# Custom per-proxy-host nginx snippet. NPM includes data/nginx/custom/
+	# server_proxy.conf in every generated proxy host; we use it to raise upload
+	# limits/timeouts so Immich uploads work through the proxy from external
+	# networks (see the file's own comments). Reload nginx only when it changed.
+	local npm_custom_dir="$SCRIPT_DIR/nginxproxymanager/data/nginx/custom"
+	run sudo mkdir -p "$npm_custom_dir"
+	if set_conf_file "$npm_custom_dir/server_proxy.conf" \
+		"$SCRIPT_DIR/nginxproxymanager/server_proxy.conf"; then
+		log "Reloading NPM nginx to apply custom proxy config..."
+		( cd "$SCRIPT_DIR/nginxproxymanager" && run sudo docker compose exec app nginx -s reload )
+	fi
+
 	if [ -x "$SCRIPT_DIR/nginxproxymanager/seed.sh" ] && [ -z "${SETUP_SKIP_NPM_SEED:-}" ]; then
 		log "Seeding NPM (admin + proxy hosts + wildcard cert)..."
 		SCRIPT_DIR="$SCRIPT_DIR" run bash "$SCRIPT_DIR/nginxproxymanager/seed.sh"
