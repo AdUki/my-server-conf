@@ -13,3 +13,8 @@ services:
       # as the "default site" until one is configured in the Admin UI; we
       # commandeer that path with a read-only bind.
       - ../index.html:/var/www/html/index.html:ro
+      # SexScanner static site, served directly by NPM's nginx via a proxy-host
+      # custom location (not proxied to a separate process). Mounted under
+      # /srv, not /data, so it's never confused with NPM's own /data above.
+      # Read-only: NPM only ever needs to read these files.
+      - /media/data/www/sexscanner:/srv/sexscanner:ro

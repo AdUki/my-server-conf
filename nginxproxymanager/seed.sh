@@ -98,4 +98,61 @@ for spec in $NPM_PROXY_HOSTS; do
 	npm_log "Created proxy host $domain (id=$host_id)"
 done
 
+###############################################################################
+# 3. SexScanner: static site served directly by NPM's nginx (no backend
+# process) from a read-only bind mount (see docker-compose.yml). Doesn't fit
+# the sub:port shape of NPM_PROXY_HOSTS, so it's handled separately here.
+#
+# The location blocks MUST live in the host-level "advanced_config" (below),
+# not in NPM's "Custom Locations" (the `locations:[]` API field / GUI's "Add
+# Location" feature) — that feature always bakes a real proxy_pass into the
+# generated location block, and nginx's try_files silently hands successful
+# (file-found) matches to that proxy_pass instead of serving them, even
+# though a genuinely-missing file still 404s correctly. Cost a long debugging
+# session to pin down; don't reintroduce it via the GUI.
+
+SEXSCANNER_DOMAIN="sexscanner.${DUCKDNS_DOMAIN}.duckdns.org"
+host_id=$(npm_find_proxy_host_id "$SEXSCANNER_DOMAIN")
+if [ -n "$host_id" ]; then
+	npm_log "Proxy host $SEXSCANNER_DOMAIN already exists (id=$host_id)"
+else
+	npm_log "Creating proxy host $SEXSCANNER_DOMAIN"
+	body=$(jq -nc \
+		--arg dom "$SEXSCANNER_DOMAIN" \
+		--argjson cert "$CERT_ID" \
+		--arg adv "$(cat <<'NGINX'
+location / {
+    root /srv/sexscanner/web;
+    index index.html;
+    try_files $uri $uri/ =404;
+}
+
+location /data {
+    root /srv/sexscanner;
+    autoindex off;
+    try_files $uri $uri/ =404;
+}
+NGINX
+)" \
+		'{
+			domain_names:[$dom],
+			forward_scheme:"http", forward_host:"127.0.0.1", forward_port:81,
+			access_list_id:0,
+			certificate_id:$cert,
+			ssl_forced:true,
+			http2_support:true,
+			hsts_enabled:true,
+			meta:{letsencrypt_agree:false, dns_challenge:false},
+			advanced_config:$adv,
+			locations:[],
+			block_exploits:true,
+			caching_enabled:false,
+			allow_websocket_upgrade:false
+		}')
+	resp=$(npm_post "nginx/proxy-hosts" "$body")
+	host_id=$(printf '%s' "$resp" | jq -r '.id')
+	[ -n "$host_id" ] && [ "$host_id" != "null" ] || npm_die "Proxy host creation for $SEXSCANNER_DOMAIN failed: $resp"
+	npm_log "Created proxy host $SEXSCANNER_DOMAIN (id=$host_id)"
+fi
+
 npm_log "Seed complete."
