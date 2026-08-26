@@ -192,10 +192,30 @@ following applies, and say explicitly which one in your one-line summary:
    broken phone at only a normal used discount is a 1, not a deal.
 
 A listing can qualify on more than one of these — mention all that apply.
-Be skeptical of prices that are too good to be true: a symbolic price like
-"1€", clear scam patterns, stolen-goods indicators, or "contact me on
-WhatsApp/external site" should be rated low (1-2) with the concern flagged
-in the summary rather than treated as a deal.
+SCAM DETECTION -- rate 1 and say "SCAM" in the summary if ANY of these
+appear. These are not deals no matter how low the price:
+  - The listing points at an external shop or website to buy/order from:
+    any URL, domain, "objednaj", "objednávka", "e-shop", "eshop", "our
+    store", "nas obchod", "link in bio", "kliknite", "click here",
+    "doprava zdarma", "free shipping", "dobierka", "posielame".
+  - It asks you to move off Marketplace to arrange payment: WhatsApp,
+    Telegram, Viber, Messenger-only, email, phone-only "write me".
+  - Payment before pickup: deposit, "zaloha", bank transfer, PayPal
+    friends-and-family, crypto, gift cards.
+  - The same generic listing is clearly mass-posted (stock photos, no
+    real condition detail, an implausible catalogue of many models at one
+    flat price).
+  - A brand-new, sealed, current-generation flagship at a fraction of
+    retail. Real salvage bargains are USED and have a reason for the
+    price (cracked, battery, sold quickly); a "new sealed iPhone 17 for
+    150 EUR with shipping" is a scam, not clause 1 underpricing.
+
+IMPORTANT distinction: the buyer genuinely does want extremely cheap
+items, so cheap alone is NOT suspicious. What marks a scam is cheap
+COMBINED with an external shop link, off-platform payment, shipping
+instead of local pickup, or a too-perfect brand-new item. A cheap, used,
+locally-collected phone from a normal personal seller is exactly what the
+buyer wants -- do not reject that as "too good to be true".
 
 DEFAULT TO REJECTING. The buyer is drowning in false positives, so an
 ordinary listing at an ordinary price is a 1-2, not a 3-4. Reserve 5 for
@@ -249,7 +269,7 @@ min_price = 10
 # Brand searches like "Samsung" drag in TVs, monitors, washing machines,
 # watches and accessories -- all of which were being sent for AI scoring.
 keywords = ['iphone', 'galaxy', 'redmi', 'poco', 'xiaomi', 'huawei', 'honor', 'realme', 'oneplus', 'pixel', 'telefon', 'smartfon', 'mobil']
-antikeywords = ['televízor', 'televizor', 'monitor', 'práčka', 'chladnička', 'hodinky', 'watch', 'buds', 'slúchadlá', 'sluchadla', 'obal', 'kryt', 'puzdro', 'case', 'nabíjačka', 'nabijacka', 'charger', 'kábel', 'kabel', 'cable', 'sklo', 'fólia', 'folia', 'klávesnica', 'myš', 'notebook', 'laptop', 'konzola', 'práčky']
+antikeywords = ['televízor', 'televizor', 'monitor', 'práčka', 'chladnička', 'hodinky', 'watch', 'buds', 'slúchadlá', 'sluchadla', 'obal', 'kryt', 'puzdro', 'case', 'nabíjačka', 'nabijacka', 'charger', 'kábel', 'kabel', 'cable', 'sklo', 'fólia', 'folia', 'klávesnica', 'myš', 'notebook', 'laptop', 'konzola', 'práčky', 'http://', 'https://', 'www.', 'e-shop', 'eshop', 'objednávka', 'objednaj', 'doprava zdarma', 'dobierka', 'telegram', 'viber', 'whatsapp']
 description = """
 Any Android or iPhone smartphone worth buying: either extremely underpriced
 vs its normal second-hand market value, a budget phone with 4GB+ RAM and a
