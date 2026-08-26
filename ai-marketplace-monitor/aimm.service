@@ -1,0 +1,14 @@
+[Unit]
+Description=AI Marketplace Monitor (Facebook Marketplace deal alerts)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/my-server-conf/ai-marketplace-monitor
+ExecStart=%h/my-server-conf/ai-marketplace-monitor/run.sh
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=default.target

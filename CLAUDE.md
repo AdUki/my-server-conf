@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Bash-based provisioning for a personal Raspberry Pi media/home server. There is no build step, no test suite, no language toolchain — every change is shell + config + docker-compose. The entry point is `setup.sh`; everything else is either invoked from it or runs independently as a Docker stack.
 
-**Everything lives inside this repo.** There is no `~/apps/` directory on the Pi — Immich, NPM, and system-monitor all run out of their subdirectories here.
+**Everything lives inside this repo.** There is no `~/apps/` directory on the Pi — Immich, NPM, system-monitor and ai-marketplace-monitor all run out of their subdirectories here.
 
 ## Running the setup
 
@@ -36,6 +36,7 @@ The `immich/*.sh` helpers are self-locating (`SCRIPT_DIR="$(realpath "$(dirname 
 
 - `immich/start.sh` / `stop.sh` / `update.sh` — wrap `docker compose` for the Immich stack.
 - `immich/setup-backup.sh` / `do-backup.sh` / `list-backups.sh` / `restore-backup.sh` — Borg-based backup of `UPLOAD_LOCATION` plus a `pg_dumpall` of `immich_postgres`. Excludes `thumbs/` and `encoded-video/`. Retention: 4 weekly + 3 monthly. `restore-backup.sh` mounts the archive at `/tmp/immich-mountpoint` and unmounts on exit via trap.
+- `ai-marketplace-monitor/install.sh` — idempotent install of the Facebook Marketplace deal monitor: venv, `pip install` from the **fork** `github.com/AdUki/ai-marketplace-monitor` (upstream is missing ~11 fixes without which login, notifications and geo-scoping are broken), Playwright chromium, and the `aimm.service` systemd **user** unit. Symlinks `~/.ai-marketplace-monitor/config.toml` to the committed `config.toml` so there is one source of truth — the tool always reads that fixed path. Pass `--upgrade` to pull newer fork commits. Runtime state (cache, saved browser session, `secrets.env`) stays in `~/.ai-marketplace-monitor/`.
 - `nginxproxymanager/seed.sh` — idempotent NPM bootstrap via its HTTP API: rotates the default admin to `NPM_ADMIN_*`, creates each `NPM_PROXY_HOSTS` entry, and requests a wildcard `*.${DUCKDNS_DOMAIN}.duckdns.org` cert via DNS-01. Invoked from `install_nginxproxymanager`.
 
 ## Architecture
@@ -52,6 +53,9 @@ Two layers stacked on a Raspberry Pi running as user `pi`:
    - `nginxproxymanager/` — reverse proxy / TLS termination, owns ports 80/443/81. `data/` and `letsencrypt/` are gitignored runtime state. The repo-root `index.html` is bind-mounted into the container as `/data/nginx/default_www/index.html` (read-only) and serves as the default landing page for un-routed hostnames. `seed.sh` bootstraps proxy hosts idempotently via the NPM API; most hosts fit the `NPM_PROXY_HOSTS` sub:port shape (reverse-proxy to a real backend), but static-file sites (currently `sexscanner`, bind-mounted read-only under `/srv/...`) are seeded as their own block at the bottom of `seed.sh` with hand-written `location` blocks in the host's `advanced_config` — NPM's "Custom Locations" GUI feature always injects a real `proxy_pass` into the same location block, which silently hijacks `try_files`'s file-found path even with no backend to proxy to.
    - `immich/` — photo management. `docker-compose.yml` is committed. `.env` is gitignored (generated from `.env.example` on first run; `DB_PASSWORD` must be preserved across deployments because the postgres data is encrypted with it).
    - `system-monitor/` — cloned from `github.com/AdUki/system-monitor` at install time (gitignored). Prometheus runs as uid `65534`, Grafana as `472`.
+
+3. **A systemd user service** (not Docker, not a host daemon):
+   - `ai-marketplace-monitor/` — Python/Playwright monitor that scores Facebook Marketplace listings with an LLM and pushes ntfy alerts. Runs as `aimm.service` under the `pi` user with lingering enabled. Its web UI on `:8467` is deliberately **not** given an `NPM_PROXY_HOSTS` entry: its login gate authenticates against the monitored Facebook account's own credentials, so it stays LAN/Tailscale-only and is listed in `index.html` by LAN IP.
 
 ### Storage convention
 

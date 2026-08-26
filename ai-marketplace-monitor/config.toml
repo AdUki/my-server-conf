@@ -1,0 +1,324 @@
+#
+# AI Marketplace Monitor — config for Simon
+# Location: Bratislava, Slovakia
+# Goal: smartphones & electronics, AI-judged for (a) extreme underpricing,
+#       (b) budget phones with decent specs, (c) LineageOS-flashable phones.
+#
+# SECRETS: nothing sensitive is written directly into this file. Fill in
+# FACEBOOK_USERNAME / FACEBOOK_PASSWORD / GEMINI_API_KEY as environment
+# variables before running (see instructions sent separately).
+#
+
+#
+# AI service used to judge each listing
+#
+# ---------------------------------------------------------------------
+# PRIMARY: Groq. Free tier is ~1,000 requests/day (30/min) on one normal
+# account -- enough for the ~800/day target on its own, unlike Google's
+# 20/day. It is OpenAI-compatible, so it works here via base_url.
+#
+# Get a free key (no card) at https://console.groq.com/keys and put it in
+# secrets.env as GROQ_API_KEY. Until that key exists this section simply
+# fails and evaluation falls through to the Gemini models below.
+#
+# If the model name below ever 404s, list valid ones with:
+#   curl -s https://api.groq.com/openai/v1/models \
+#     -H "Authorization: Bearer $GROQ_API_KEY" | grep -o '"id":"[^"]*"'
+#
+# Cerebras (https://cloud.cerebras.ai) is an equivalent free-tier backup
+# with the same ~1,000/day shape; add it the same way with
+# base_url = 'https://api.cerebras.ai/v1' if you want more headroom.
+# VERIFIED LIVE on this key: x-ratelimit-limit-requests = 1000/day, and
+# the two models below report that allowance independently, so chaining
+# them roughly doubles headroom. llama-3.3-70b-versatile is NOT available
+# on this account (404) -- do not put it back.
+#
+# qwen3.8-27b is first because in a side-by-side test it actually reasoned
+# about street price and wrote a real summary, while gpt-oss-120b copied
+# the output template literally ("Rating 4: short summary"). gpt-oss-120b
+# is the bigger model and stays as the next fallback.
+[ai.groq]
+provider = 'openai'
+api_key = '${GROQ_API_KEY}'
+base_url = 'https://api.groq.com/openai/v1'
+model = 'qwen/qwen3.8-27b'
+max_retries = 2
+
+[ai.groq_oss]
+provider = 'openai'
+api_key = '${GROQ_API_KEY}'
+base_url = 'https://api.groq.com/openai/v1'
+model = 'openai/gpt-oss-120b'
+max_retries = 2
+
+# ---------------------------------------------------------------------
+# FALLBACKS: Google Gemini.
+# Google's free tier allows only 20 requests PER DAY PER MODEL
+# (confirmed from the live 429 body: GenerateRequestsPerDayPerProjectPerModel,
+# quotaValue 20). One search cycle can easily exceed that.
+#
+# Each model has its OWN separate 20/day allowance, and this tool tries its
+# AI services in order, falling through to the next one when a service
+# errors out. So listing several models chains their quotas: when the first
+# is exhausted for the day, evaluation continues on the next.
+#
+# max_retries is deliberately LOW. A quota-exhausted model can never succeed
+# by retrying, and with exponential backoff a high retry count would stall
+# each listing for ~10 minutes before falling through to the next model.
+# Failing fast is what makes the fallback chain actually work.
+#
+# Verified live that this key can reach every model listed below;
+# *-pro and flash-latest return 429 on this key and are not usable.
+
+[ai.gemini]
+api_key = '${GEMINI_API_KEY}'
+model = 'gemini-3.6-flash'
+max_retries = 2
+
+[ai.gemini_35]
+provider = 'gemini'
+api_key = '${GEMINI_API_KEY}'
+model = 'gemini-3.5-flash'
+max_retries = 2
+
+[ai.gemini_35_lite]
+provider = 'gemini'
+api_key = '${GEMINI_API_KEY}'
+model = 'gemini-3.5-flash-lite'
+max_retries = 2
+
+[ai.gemini_31_lite]
+provider = 'gemini'
+api_key = '${GEMINI_API_KEY}'
+model = 'gemini-3.1-flash-lite'
+max_retries = 2
+
+#
+# Marketplace: Facebook, centered on Bratislava
+#
+[marketplace.facebook]
+search_city = 'bratislava'
+# Facebook radius for European cities is shown in km in the UI. 50km covers
+# greater Bratislava plus nearby towns (Trnava, Senec, Pezinok, Malacky...).
+# Widen this if you want to catch deals across more of Slovakia.
+radius = 50
+currency = 'EUR'
+# TESTED LIVE and reverted: deliveryMethod=local_pick_up stacked with the
+# other active filters (category, minPrice, condition, brand query) made
+# Facebook return ZERO results for every single search, every time -- not
+# a subtle bug, directly observed via -v debug logs. Too restrictive to use.
+#
+# seller_locations is the tool's actual purpose-built fix for "results from
+# the wrong place": it's a POST-search filter on each listing's own real
+# displayed location text (whatever Facebook shows, e.g. "Fairfield, CA"),
+# independent of shipping settings -- so shipping/recommended listings from
+# outside Slovakia get dropped without also dropping genuine local supply.
+seller_locations = ['Bratislava', 'Trnava', 'Senec', 'Pezinok', 'Malacky', 'Modra', 'Slovensko', 'Slovakia']
+
+# Deliberately not set here: username/password are picked up straight from
+# the FACEBOOK_USERNAME / FACEBOOK_PASSWORD environment variables (loaded by
+# run.sh from secrets.env). The web UI's login gate reads config values
+# literally (no ${VAR} expansion), so writing '${FACEBOOK_USERNAME}' here
+# would make the web UI expect that literal placeholder text as your login.
+# CONFIRMED LIVE: login was hitting Facebook's two-step verification (2FA)
+# every single run (credentials are correct) with login_wait_time=0, so
+# there was never any window for it to complete -- immediate failure,
+# every time. Restoring a real wait. If your 2FA is a push-approval ("tap
+# Yes on your phone") rather than a typed code, this may work headless as
+# long as you approve it on your phone within this window. If it needs a
+# typed code, you'll need one interactive run without --headless (or via a
+# VNC/X-forwarded display) to enter it — after that, the session is saved
+# to disk (~/.ai-marketplace-monitor/facebook_session_state.json) and
+# reused on every future run, so this should only be needed once.
+login_wait_time = 15
+
+search_interval = '30m'
+max_search_interval = '1h'    # jitter between 30m-1h so requests look less robotic
+
+notify = 'me'
+sort_by = 'new'                # catch freshly-listed deals before others snipe them
+
+# This applies to every item searched below. It's where the "AI judgement"
+# combinations you described live — the model applies whichever clause fits.
+extra_prompt = """
+You are hunting for exceptional smartphone and electronics deals for a buyer
+in Bratislava, Slovakia. Rate a listing 5 (great deal) if ANY of the
+following applies, and say explicitly which one in your one-line summary:
+
+1. EXTREME UNDERPRICING: judge this against a REQUIRED DISCOUNT that grows
+   steeply (roughly exponentially, not a flat percentage) with the item's
+   typical resale value — a flat "half off" bar is trivially met by cheap
+   items and lets overpriced expensive items slip through (e.g. a Samsung
+   S25+ at €580 is only ~40% off its ~€950 resale value — NOT a deal, this
+   exact case was flagged as false-positive junk). First estimate the
+   item's realistic current used/refurbished resale value (not MSRP) for
+   its exact model and condition, using your own knowledge, then require:
+     - under €50 resale value  → ≥35% off to qualify
+     - €50–150                 → ≥45% off
+     - €150–350                → ≥55% off
+     - €350–700                → ≥65% off
+     - €700–1200               → ≥75% off
+     - over €1200              → ≥80% off
+   State the estimated resale value, the asking price, and the resulting
+   discount % in your summary so this is auditable, not just a vibe.
+
+2. BUDGET PHONE, DECENT SPECS: if the listing is a smartphone, it must
+   have BOTH at least 4GB of RAM AND an AnTuTu benchmark score of at
+   least 600,000 — this is a HARD floor, not a
+   "respectable for its price bracket" judgement call. Use your knowledge
+   of the specific model's real AnTuTu score as listed on kimovil.com. If
+   the model scores under 600,000, it does NOT qualify under this
+   clause no matter how cheap it is. If you do not know the model's
+   actual AnTuTu score, do not assume it passes — say so and rate low.
+   Always state the model's approximate AnTuTu score in your summary.
+
+3. LINEAGEOS-FLASHABLE (big plus): if the listing is a smartphone, check
+   whether that specific model is known to be supported (officially or via
+   an active unofficial build) by LineageOS or another major custom-ROM
+   community (e.g. it appears on the LineageOS wiki device list, or is a
+   well-known XDA-Developers custom-ROM target). If so, call this out
+   explicitly in the summary even if price/specs alone are unremarkable —
+   it means the phone can get a long-lived, de-Googled, up-to-date OS long
+   after the manufacturer stops supporting it.
+
+4. BROKEN / DAMAGED / FOR-PARTS PHONES: these ARE wanted, but only at a
+   salvage price. The asking price must be at most 1/5 (20%) of what the
+   same model in normal working condition currently resells for — i.e. at
+   least 80% off. A cracked screen, dead battery, "na náhradné diely",
+   "nefunkčný", "rozbitý", water damage etc. is fine at that price and NOT
+   fine above it. Estimate the working-condition resale value, state it,
+   the asking price, and the resulting discount % in your summary. This
+   clause overrides the graduated curve in point 1 for damaged units. A
+   broken phone at only a normal used discount is a 1, not a deal.
+
+A listing can qualify on more than one of these — mention all that apply.
+Be skeptical of prices that are too good to be true: a symbolic price like
+"1€", clear scam patterns, stolen-goods indicators, or "contact me on
+WhatsApp/external site" should be rated low (1-2) with the concern flagged
+in the summary rather than treated as a deal.
+
+DEFAULT TO REJECTING. The buyer is drowning in false positives, so an
+ordinary listing at an ordinary price is a 1-2, not a 3-4. Reserve 5 for
+listings that clearly and verifiably clear one of the bars above — if you
+are unsure, or you cannot confidently estimate the model's resale value,
+rate it low rather than guessing generously. "Seems like a reasonable
+price" is NOT a deal. Accessories, cases, chargers, cables, parts, broken
+units, and non-electronics that merely mention a brand name are never
+deals — rate them 1.
+"""
+
+#
+# Notification: ntfy (no account needed)
+#
+[user.me]
+# Via env var: this file is committed to a public repo, and anyone who
+# knows the topic name can read your alerts (and publish to them).
+ntfy_topic = '${NTFY_TOPIC}'
+# Cap the listing description in the push. Left unset, the tool sends the
+# seller's ENTIRE description, and ntfy turns any message over ~4KB into an
+# "attachment.txt" you have to open instead of showing text in the
+# notification -- which is exactly what was happening.
+#
+# 1200 chars keeps the whole message comfortably under ntfy's ~4KB limit
+# (title + price + location + URL + AI verdict add roughly 300 more) while
+# still showing most real listing descriptions in full.
+with_description = 1200
+# Force plain text: no markdown, so nothing renders as stray symbols.
+message_format = 'plain_text'
+remind = '3d'   # nudge again if a good listing is still up after 3 days
+
+#
+# Items to search
+#
+[item.smartphones]
+# category='phones' (a subcategory slug, only verified valid on Facebook's
+# separate /marketplace/category/phones/ BROWSE page) turned out to break
+# city scoping when used as this tool's category= SEARCH query parameter —
+# that parameter only recognizes the tool's original top-level categories.
+# Back to 'electronics', the one value actually proven scoped-correctly.
+# search_phrases are brand names, not generic words like "phone"/"telefon",
+# since sellers title listings by brand/model, not generic words.
+search_phrases = ['Samsung', 'iPhone', 'Xiaomi', 'Huawei', 'Honor', 'realme']
+category = 'electronics'
+min_price = 10
+# Pre-AI filters. These run BEFORE the AI call, so they cut both junk
+# notifications and free-tier quota burn (the AI call is the scarce
+# resource). keywords = must match at least one (OR); antikeywords =
+# reject if any match.
+#
+# Brand searches like "Samsung" drag in TVs, monitors, washing machines,
+# watches and accessories -- all of which were being sent for AI scoring.
+keywords = ['iphone', 'galaxy', 'redmi', 'poco', 'xiaomi', 'huawei', 'honor', 'realme', 'oneplus', 'pixel', 'telefon', 'smartfon', 'mobil']
+antikeywords = ['televízor', 'televizor', 'monitor', 'práčka', 'chladnička', 'hodinky', 'watch', 'buds', 'slúchadlá', 'sluchadla', 'obal', 'kryt', 'puzdro', 'case', 'nabíjačka', 'nabijacka', 'charger', 'kábel', 'kabel', 'cable', 'sklo', 'fólia', 'folia', 'klávesnica', 'myš', 'notebook', 'laptop', 'konzola', 'práčky']
+description = """
+Any Android or iPhone smartphone worth buying: either extremely underpriced
+vs its normal second-hand market value, a budget phone with 4GB+ RAM and a
+AnTuTu score of at least 600,000, or a model known to be well-supported
+by LineageOS/custom ROMs. Must be an actual phone -- not a TV, monitor,
+watch, case, charger, cable or other accessory. Broken / damaged / sold-
+for-parts phones ARE of interest, but only at salvage pricing: at most
+1/5 (20%) of the working-condition resale value.
+"""
+condition = ['new', 'used_like_new', 'used_good']
+# Raised 4 -> 5: rating 4 was letting through too much ordinary junk.
+# Only genuine, fully-qualifying deals notify now.
+rating = 5
+
+[item.electronics]
+search_phrases = ['laptop', 'notebook', 'tablet', 'elektronika', 'iPad', 'MacBook', 'monitor', 'PlayStation', 'Xbox', 'konzola']
+category = 'electronics'
+min_price = 20
+antikeywords = ['rozbitý', 'rozbity', 'poškodený', 'poskodeny', 'nefunkčný', 'nefunkcny', 'na náhradné diely', 'broken', 'for parts']
+description = """
+Laptops, tablets, and other consumer electronics (not phones) that are
+extremely underpriced against the graduated discount curve in the prompt
+above (the more expensive the item, the steeper the discount required —
+a flat "half off" is NOT enough for pricier gear). Not interested in
+accessories, chargers, cables, spare parts, or broken units.
+"""
+condition = ['new', 'used_like_new', 'used_good']
+# Raised 4 -> 5: rating 4 was letting through too much ordinary junk.
+# Only genuine, fully-qualifying deals notify now.
+rating = 5
+
+#
+# Tumble dryer -- separate item because the criteria are nothing like the
+# phone/electronics ones: no specs, no resale-value curve, no AnTuTu.
+# Just "is it a dryer and is it <= 30 EUR", broken explicitly welcome.
+#
+[item.dryer]
+# Slovak "susicka" = dryer. Accent-free spellings included because plenty
+# of sellers type without diacritics.
+search_phrases = ['sušička', 'susicka', 'sušička bielizne', 'sušička prádla']
+# Facebook-side price cap, so out-of-budget units never even get fetched.
+max_price = 30
+# No category set on purpose: 'homegoods' was never verified against this
+# tool's category= search parameter, and an unverified category value has
+# already broken result scoping once in this config's history.
+#
+# No condition filter either -- the default would exclude used_fair, which
+# is exactly where cheap/broken dryers live.
+antikeywords = ['sušička na ovocie', 'susicka na ovocie', 'sušička ovocia', 'sušička rúk', 'susicka ruk', 'vlasov', 'filament']
+description = """
+A clothes tumble dryer (susicka bielizne / susicka pradla) for at most
+30 EUR. Working or broken/faulty are both fine at this price. NOT a food
+dehydrator, hand dryer, hair dryer or filament dryer.
+"""
+# Item-level extra_prompt overrides the marketplace-level one, which is all
+# about phone resale curves and AnTuTu scores and is irrelevant here.
+extra_prompt = """
+This item is a simple, single-criterion search. Rate 5 if ALL of the
+following hold:
+  - it is genuinely a clothes tumble dryer (susicka bielizne / susicka
+    pradla / a dryer for laundry), AND
+  - the asking price is 30 EUR or less.
+Condition does NOT matter: broken, faulty, "nefunkcna", damaged, or sold
+for parts all still rate 5 as long as it is a laundry dryer at 30 EUR or
+less. The buyer wants cheap units regardless of state.
+
+Rate 1 if it is not a laundry dryer -- in particular a food dehydrator
+(susicka na ovocie/potravin), hand dryer, hair dryer, 3D-printer filament
+dryer, or a washing machine with no dryer function -- or if the price is
+above 30 EUR.
+"""
+rating = 4
