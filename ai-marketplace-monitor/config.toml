@@ -162,7 +162,15 @@ following applies, and say explicitly which one in your one-line summary:
    State the estimated resale value, the asking price, and the resulting
    discount % in your summary so this is auditable, not just a vibe.
 
-2. DECENT SPECS: if the listing is a smartphone, it must have MORE than
+2. DECENT SPECS: a VERIFIED FACTS block is supplied above for most
+   devices, with a QUALITY x/100 rating already computed from the chip
+   benchmark, RAM and storage. When it is present, use it: QUALITY >= 55
+   is decent hardware, < 35 is weak. Do not override it with remembered
+   benchmark numbers -- that is exactly what produced wrong rejections
+   before. If no facts are given, fall back to the rule below.
+
+   Fallback / additional requirement: if the listing is a smartphone, it
+   must have MORE than
    4GB of RAM — i.e. 6GB or more; a 4GB phone does NOT qualify. This is
    the only spec requirement: there is deliberately no benchmark floor,
    because benchmark scores were being guessed wrongly and rejecting
@@ -190,6 +198,25 @@ following applies, and say explicitly which one in your one-line summary:
    the asking price, and the resulting discount % in your summary. This
    clause overrides the graduated curve in point 1 for damaged units. A
    broken phone at only a normal used discount is a 1, not a deal.
+
+READ THE SELLER'S TEXT CAREFULLY. The facts block describes the MODEL;
+only the listing tells you about the actual UNIT being sold. Downgrade or
+reject on things stated (or conspicuously missing) in the description:
+  - It is not the device at all: a case, cover, screen protector, charger,
+    cable, box, or spare part that merely names the model. Rate 1.
+  - Damage or faults: cracked screen/back, dead or swollen battery, faulty
+    charging port, water damage, "nefunkčný", "rozbitý", "prasknutý",
+    Face ID / camera / speaker not working. These are only acceptable at
+    the salvage price in clause 4.
+  - Locked or encumbered: iCloud/Google account locked, network/SIM lock,
+    blacklisted IMEI, "na diely", missing IMEI, stolen-goods hints.
+  - Battery health figures, cycle counts, or "battery needs replacing".
+  - Missing essentials: no charger, no box, when that affects value.
+  - Vagueness where detail is expected: no condition stated, stock photos
+    only, refusal to show the actual device. Treat as a reason for
+    caution, not as neutral.
+State the decisive detail from the description in your summary, so the
+buyer can see WHY, e.g. "cracked back, priced as mint".
 
 A listing can qualify on more than one of these — mention all that apply.
 SCAM DETECTION -- rate 1 and say "SCAM" in the summary if ANY of these

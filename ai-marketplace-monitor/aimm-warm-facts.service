@@ -1,0 +1,8 @@
+[Unit]
+Description=Resolve queued device specs for AI Marketplace Monitor
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/my-server-conf/ai-marketplace-monitor
+# run.sh sources secrets.env, then --warm-facts drains the queue and exits.
+ExecStart=%h/my-server-conf/ai-marketplace-monitor/run.sh --warm-facts

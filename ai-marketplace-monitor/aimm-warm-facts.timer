@@ -1,0 +1,12 @@
+[Unit]
+Description=Periodically resolve queued device specs
+
+[Timer]
+# Hourly, offset from the monitor's own search cycle. Lookups are slow and share
+# the provider's rate limit with the monitor, so they run apart from it.
+OnBootSec=15min
+OnUnitActiveSec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
