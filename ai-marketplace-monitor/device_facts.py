@@ -145,20 +145,82 @@ def lineage_supported(model: str) -> Optional[Dict[str, str]]:
 # --------------------------------------------------------------------------
 # Specs via web search (cached per model)
 # --------------------------------------------------------------------------
-SPEC_PROMPT = (
-    "Look up this phone model and report ONLY verified facts you find on the web: "
-    "{model}\n\n"
-    "Reply as strict JSON with exactly these keys and no prose:\n"
-    '{{"model": "canonical name", "ram_gb": [list of RAM variants in GB, integers], '
-    '"antutu": integer or null, "antutu_version": "v9|v10|unknown", '
-    '"release_year": integer or null, "used_price_eur": integer or null, '
-    '"source": "short note on where the numbers came from"}}\n'
-    "used_price_eur = typical second-hand price in Europe in EUR for a unit in "
-    "good working condition. Use null for anything you could not verify."
-)
+SPEC_PROMPT = """Look up this device and report ONLY facts you verify on the web.
+
+Device kind: {kind}
+Listing text: {model}
+
+Reply as strict JSON, no prose, exactly these keys:
+{{"model": "canonical product name",
+ "kind": "phone" or "laptop",
+ "chip": "exact SoC or CPU, e.g. Snapdragon 888 / Intel Core i5-1135G7",
+ "benchmark_name": "antutu_v10" for phones, "passmark_cpu" for laptops,
+ "benchmark_score": integer or null,
+ "ram_gb": [RAM variants in GB as integers],
+ "storage_gb": [storage variants in GB as integers],
+ "release_year": integer or null,
+ "used_price_eur": integer or null,
+ "source": "where the numbers came from"}}
+
+benchmark_score: for a phone use its AnTuTu v10 total score; for a laptop use
+the PassMark CPU Mark of its processor. Use null if you cannot verify it --
+never estimate. used_price_eur = typical second-hand price in Europe, EUR,
+good working condition."""
 
 
-def fetch_specs(model: str, api_key: str, timeout: int = 45) -> Dict[str, Any]:
+# Rough class-typical ceilings used to normalise a raw benchmark to 0..1.
+# Chosen as "a genuinely high-end current device", so ~1.0 means flagship and
+# ~0.3 means entry level. They only need to be consistent, not exact.
+BENCHMARK_CEILING = {
+    "antutu_v10": 2_000_000,   # current flagship phones land around here
+    "antutu_v9": 1_000_000,    # v9 scores run roughly half of v10
+    "antutu": 1_500_000,       # version unstated - assume something between
+    "passmark_cpu": 30_000,    # strong current laptop CPU
+    "geekbench6_multi": 15_000,
+}
+
+
+def quality_score(facts: Dict[str, Any]) -> Dict[str, Any]:
+    """Deterministic good/bad verdict from chip + RAM + storage.
+
+    The LLM supplies the raw numbers (cached per model); the judgement is made
+    here in plain arithmetic so it is reproducible and cannot be talked into a
+    different answer by a persuasive listing.
+
+    Weighting: the chip dominates, RAM matters, storage is a tiebreaker --
+    which is how these devices actually feel in use.
+    """
+    bench = facts.get("benchmark_score")
+    name = (facts.get("benchmark_name") or "").lower()
+    ceiling = BENCHMARK_CEILING.get(name)
+    if ceiling is None:
+        # Unknown benchmark: guess by kind so a score is still produced.
+        ceiling = BENCHMARK_CEILING["passmark_cpu" if facts.get("kind") == "laptop" else "antutu_v10"]
+
+    parts: Dict[str, Any] = {}
+    if isinstance(bench, (int, float)) and bench > 0:
+        parts["chip"] = min(bench / ceiling, 1.25)
+    ram_list = [r for r in (facts.get("ram_gb") or []) if isinstance(r, (int, float))]
+    if ram_list:
+        # 8GB is "fine"; below that degrades quickly, above it helps a little.
+        parts["ram"] = min(max(ram_list) / 8.0, 1.25)
+    store_list = [g for g in (facts.get("storage_gb") or []) if isinstance(g, (int, float))]
+    if store_list:
+        parts["storage"] = min(max(store_list) / 256.0, 1.25)
+
+    if "chip" not in parts and "ram" not in parts:
+        return {"score": None, "verdict": "unknown", "parts": parts}
+
+    weights = {"chip": 0.70, "ram": 0.25, "storage": 0.05}
+    used = {k: v for k, v in parts.items() if k in weights}
+    total_w = sum(weights[k] for k in used) or 1.0
+    score = round(100 * sum(parts[k] * weights[k] for k in used) / total_w)
+
+    verdict = "great" if score >= 75 else "good" if score >= 55 else "ok" if score >= 35 else "weak"
+    return {"score": score, "verdict": verdict, "parts": {k: round(v, 2) for k, v in parts.items()}}
+
+
+def fetch_specs(model: str, api_key: str, kind: str = "auto", timeout: int = 45) -> Dict[str, Any]:
     """Ask a web-searching model for this device's specs, as JSON.
 
     Groq answers 413 (not 429) when a request would exceed the remaining
@@ -169,7 +231,7 @@ def fetch_specs(model: str, api_key: str, timeout: int = 45) -> Dict[str, Any]:
         for attempt in range(1):
             payload = {
                 "model": model_name,
-                "messages": [{"role": "user", "content": SPEC_PROMPT.format(model=model)}],
+                "messages": [{"role": "user", "content": SPEC_PROMPT.format(model=model, kind=kind)}],
             }
             req = urllib.request.Request(
                 GROQ_URL,
@@ -203,7 +265,19 @@ def fetch_specs(model: str, api_key: str, timeout: int = 45) -> Dict[str, Any]:
     raise last_err or RuntimeError("spec lookup failed")
 
 
-def device_facts(model: str, refresh: bool = False, offline: bool = False) -> Dict[str, Any]:
+LAPTOP_HINTS = ("laptop", "notebook", "macbook", "thinkpad", "ideapad", "vivobook",
+                "zenbook", "latitude", "elitebook", "probook", "inspiron", "pavilion",
+                "chromebook", "ultrabook", "aspire", "nitro", "legion", "omen")
+
+
+def guess_kind(text: str) -> str:
+    t = _norm(text)
+    if any(h in t for h in LAPTOP_HINTS):
+        return "laptop"
+    return "phone"
+
+
+def device_facts(model: str, refresh: bool = False, offline: bool = False, kind: str = "auto") -> Dict[str, Any]:
     """Facts for one model. Cached, so each model costs one lookup ever.
 
     offline=True skips the (slow, rate-limited) web spec lookup and returns
@@ -215,11 +289,13 @@ def device_facts(model: str, refresh: bool = False, offline: bool = False) -> Di
     if not refresh and key in cache:
         return cache[key]
 
-    facts: Dict[str, Any] = {"query": model}
+    if kind == "auto":
+        kind = guess_kind(model)
+    facts: Dict[str, Any] = {"query": model, "kind": kind}
     api_key = "" if offline else os.environ.get("GROQ_API_KEY", "")
     if api_key:
         try:
-            facts.update(fetch_specs(model, api_key))
+            facts.update(fetch_specs(model, api_key, kind=kind))
         except Exception as e:  # network/quota/parse - degrade, never crash
             facts["specs_error"] = str(e)[:200]
     else:
@@ -236,6 +312,7 @@ def device_facts(model: str, refresh: bool = False, offline: bool = False) -> Di
             facts.update(ov)
             facts["overridden"] = True
 
+    facts.update(quality_score(facts))
     facts["cached_at"] = int(time.time())
     cache[key] = facts
     _save(FACTS_CACHE, cache)
@@ -244,23 +321,30 @@ def device_facts(model: str, refresh: bool = False, offline: bool = False) -> Di
 
 def summarize(facts: Dict[str, Any]) -> str:
     """One compact line to paste into an LLM prompt."""
-    bits = []
+    bits = [facts.get("kind", "device")]
+    if facts.get("chip"):
+        bits.append(str(facts["chip"]))
+    if facts.get("benchmark_score"):
+        bits.append(f"{facts.get('benchmark_name','benchmark')} {facts['benchmark_score']:,}")
     if facts.get("ram_gb"):
         bits.append("RAM " + "/".join(f"{r}GB" for r in facts["ram_gb"]))
-    if facts.get("antutu"):
-        bits.append(f"AnTuTu ~{facts['antutu']:,} ({facts.get('antutu_version','?')})")
+    if facts.get("storage_gb"):
+        bits.append("storage " + "/".join(f"{g}GB" for g in facts["storage_gb"]))
     if facts.get("used_price_eur"):
-        bits.append(f"typical used price ~EUR {facts['used_price_eur']}")
+        bits.append(f"typical used ~EUR {facts['used_price_eur']}")
     if facts.get("release_year"):
         bits.append(f"released {facts['release_year']}")
-    if facts.get("lineageos_unofficial"):
-        bits.append("LineageOS: unofficial build available")
-    elif facts.get("lineageos_official"):
-        bits.append("LineageOS: OFFICIAL support")
-    else:
-        bits.append("LineageOS: no official build (unofficial may still exist)")
-    if facts.get("specs_error"):
-        bits.append(f"(spec lookup failed: {facts['specs_error'][:60]})")
+    if facts.get("kind") != "laptop":
+        if facts.get("lineageos_unofficial"):
+            bits.append("LineageOS: unofficial build available")
+        elif facts.get("lineageos_official"):
+            bits.append("LineageOS: OFFICIAL support")
+        else:
+            bits.append("LineageOS: no official build")
+    if facts.get("score") is not None:
+        bits.append(f"QUALITY {facts['score']}/100 ({facts['verdict']})")
+    elif facts.get("specs_error"):
+        bits.append(f"(no specs: {str(facts['specs_error'])[:40]})")
     return "; ".join(bits)
 
 
@@ -270,8 +354,9 @@ def main() -> int:
     ap.add_argument("--refresh", action="store_true", help="ignore cached value")
     ap.add_argument("--json", action="store_true", help="print raw JSON")
     ap.add_argument("--offline", action="store_true", help="cache + LineageOS only, no web lookup")
+    ap.add_argument("--kind", default="auto", choices=("auto", "phone", "laptop"))
     a = ap.parse_args()
-    facts = device_facts(" ".join(a.model), refresh=a.refresh, offline=a.offline)
+    facts = device_facts(" ".join(a.model), refresh=a.refresh, offline=a.offline, kind=a.kind)
     print(json.dumps(facts, indent=1, ensure_ascii=False) if a.json else summarize(facts))
     return 0
 
