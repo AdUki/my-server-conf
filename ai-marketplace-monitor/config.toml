@@ -162,15 +162,15 @@ following applies, and say explicitly which one in your one-line summary:
    State the estimated resale value, the asking price, and the resulting
    discount % in your summary so this is auditable, not just a vibe.
 
-2. BUDGET PHONE, DECENT SPECS: if the listing is a smartphone, it must
-   have BOTH at least 4GB of RAM AND an AnTuTu benchmark score of at
-   least 600,000 — this is a HARD floor, not a
-   "respectable for its price bracket" judgement call. Use your knowledge
-   of the specific model's real AnTuTu score as listed on kimovil.com. If
-   the model scores under 600,000, it does NOT qualify under this
-   clause no matter how cheap it is. If you do not know the model's
-   actual AnTuTu score, do not assume it passes — say so and rate low.
-   Always state the model's approximate AnTuTu score in your summary.
+2. DECENT SPECS: if the listing is a smartphone, it must have MORE than
+   4GB of RAM — i.e. 6GB or more; a 4GB phone does NOT qualify. This is
+   the only spec requirement: there is deliberately no benchmark floor,
+   because benchmark scores were being guessed wrongly and rejecting
+   genuinely good phones. Use your knowledge of the specific model's RAM
+   configuration; if a model ships in several variants and the listing
+   does not say which, use the RAM stated in the listing title/description
+   when present, and otherwise judge by the variant most commonly sold.
+   State the RAM in your summary.
 
 3. LINEAGEOS-FLASHABLE (big plus): if the listing is a smartphone, check
    whether that specific model is known to be supported (officially or via
@@ -273,8 +273,8 @@ antikeywords = ['televízor', 'televizor', 'monitor', 'práčka', 'chladnička',
 description = """
 Any Android or iPhone smartphone worth buying: either extremely underpriced
 vs its normal second-hand market value, a budget phone with 4GB+ RAM and a
-AnTuTu score of at least 600,000, or a model known to be well-supported
-by LineageOS/custom ROMs. Must be an actual phone -- not a TV, monitor,
+more than 4GB of RAM, or a model known to be well-supported by
+LineageOS/custom ROMs. Must be an actual phone -- not a TV, monitor,
 watch, case, charger, cable or other accessory. Broken / damaged / sold-
 for-parts phones ARE of interest, but only at salvage pricing: at most
 1/5 (20%) of the working-condition resale value.
