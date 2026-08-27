@@ -61,6 +61,10 @@ GROQ_SEARCH_MODELS = ("groq/compound-mini", "groq/compound")
 UA = "ai-marketplace-monitor device-facts"
 
 
+class RateLimited(RuntimeError):
+    """The provider is busy (HTTP 413/429). Retry later; nothing is wrong."""
+
+
 def _get_json(url: str, timeout: int = 30) -> Any:
     req = urllib.request.Request(url, headers={"User-Agent": UA})
     with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -187,51 +191,89 @@ def quality_score(facts: Dict[str, Any]) -> Dict[str, Any]:
     here in plain arithmetic so it is reproducible and cannot be talked into a
     different answer by a persuasive listing.
 
-    Weighting: the chip dominates, RAM matters, storage is a tiebreaker --
-    which is how these devices actually feel in use.
+    Two rules learned from live data:
+
+    * The chip is mandatory for a confident verdict. Without a benchmark the
+      score is capped and marked low-confidence -- otherwise a device with no
+      known CPU but generous RAM/storage options scored "great", which is
+      how a ThinkPad with no benchmark once came out at 125/100.
+    * RAM/storage use the SMALLEST advertised variant. These lists describe
+      configurations the model was sold in, not the unit in the listing, so
+      the smallest is the only figure that cannot overstate what is on offer.
     """
     bench = facts.get("benchmark_score")
     name = (facts.get("benchmark_name") or "").lower()
     ceiling = BENCHMARK_CEILING.get(name)
     if ceiling is None:
-        # Unknown benchmark: guess by kind so a score is still produced.
         ceiling = BENCHMARK_CEILING["passmark_cpu" if facts.get("kind") == "laptop" else "antutu_v10"]
 
     parts: Dict[str, Any] = {}
-    if isinstance(bench, (int, float)) and bench > 0:
-        parts["chip"] = min(bench / ceiling, 1.25)
-    ram_list = [r for r in (facts.get("ram_gb") or []) if isinstance(r, (int, float))]
-    if ram_list:
-        # 8GB is "fine"; below that degrades quickly, above it helps a little.
-        parts["ram"] = min(max(ram_list) / 8.0, 1.25)
-    store_list = [g for g in (facts.get("storage_gb") or []) if isinstance(g, (int, float))]
-    if store_list:
-        parts["storage"] = min(max(store_list) / 256.0, 1.25)
+    if isinstance(bench, (int, float)) and not isinstance(bench, bool) and bench > 0:
+        parts["chip"] = min(bench / ceiling, 1.0)
 
-    if "chip" not in parts and "ram" not in parts:
-        return {"score": None, "verdict": "unknown", "parts": parts}
+    def _smallest(key: str) -> Optional[float]:
+        vals = [
+            v for v in (facts.get(key) or [])
+            if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0
+        ]
+        return min(vals) if vals else None
+
+    ram = _smallest("ram_gb")
+    if ram is not None:
+        parts["ram"] = min(ram / 8.0, 1.0)      # 8GB is "fine"
+    store = _smallest("storage_gb")
+    if store is not None:
+        parts["storage"] = min(store / 256.0, 1.0)
+
+    if not parts:
+        return {"score": None, "verdict": "unknown", "confidence": "none", "parts": {}}
 
     weights = {"chip": 0.70, "ram": 0.25, "storage": 0.05}
     used = {k: v for k, v in parts.items() if k in weights}
     total_w = sum(weights[k] for k in used) or 1.0
-    score = round(100 * sum(parts[k] * weights[k] for k in used) / total_w)
+    score = 100 * sum(parts[k] * weights[k] for k in used) / total_w
 
+    if "chip" in parts:
+        confidence = "high"
+    else:
+        # No benchmark: RAM/storage alone cannot justify calling it good.
+        confidence = "low"
+        score = min(score, 45)
+
+    score = int(round(max(0.0, min(100.0, score))))
     verdict = "great" if score >= 75 else "good" if score >= 55 else "ok" if score >= 35 else "weak"
-    return {"score": score, "verdict": verdict, "parts": {k: round(v, 2) for k, v in parts.items()}}
+    if confidence == "low":
+        verdict += " (no benchmark)"
+    return {
+        "score": score,
+        "verdict": verdict,
+        "confidence": confidence,
+        "parts": {k: round(v, 2) for k, v in parts.items()},
+    }
 
 
 def fetch_specs(model: str, api_key: str, kind: str = "auto", timeout: int = 45) -> Dict[str, Any]:
     """Ask a web-searching model for this device's specs, as JSON.
 
-    Groq answers 413 (not 429) when a request would exceed the remaining
-    tokens-per-minute allowance, so both codes mean "wait", not "give up".
+    Failures split into two kinds:
+
+    * busy (HTTP 413/429) -- Groq answers 413, not 429, when a request would
+      exceed the remaining tokens-per-minute allowance, and this helper shares
+      that budget with the monitor service. Worth one short wait, then the
+      next (lighter) model. Surfaced as RateLimited so callers can tell
+      "try later" from "broken".
+    * fatal (bad request, auth, server error, DNS) -- another model would fail
+      identically, so stop immediately rather than burning further requests.
     """
     last_err: Optional[Exception] = None
+
     for model_name in GROQ_SEARCH_MODELS:
-        for attempt in range(1):
+        for attempt in range(2):
             payload = {
                 "model": model_name,
-                "messages": [{"role": "user", "content": SPEC_PROMPT.format(model=model, kind=kind)}],
+                "messages": [
+                    {"role": "user", "content": SPEC_PROMPT.format(model=model, kind=kind)}
+                ],
             }
             req = urllib.request.Request(
                 GROQ_URL,
@@ -246,22 +288,24 @@ def fetch_specs(model: str, api_key: str, kind: str = "auto", timeout: int = 45)
                 with urllib.request.urlopen(req, timeout=timeout) as r:
                     body = json.loads(r.read().decode())
             except urllib.error.HTTPError as e:
-                last_err = e
                 if e.code in (413, 429):
-                    break
-                break
+                    last_err = RateLimited(f"{model_name}: {e}")
+                    if attempt == 0:
+                        time.sleep(20)
+                        continue
+                    break  # move on to the next model
+                raise
             except urllib.error.URLError as e:
-                last_err = e
-                break
+                raise RuntimeError(f"network error contacting {GROQ_URL}: {e}") from e
 
             content = body["choices"][0]["message"].get("content") or ""
             m = re.search(r"\{.*\}", content, re.DOTALL)
             if not m:
-                last_err = ValueError(f"no JSON in response: {content[:150]}")
-                break
+                raise ValueError(f"no JSON in response from {model_name}: {content[:150]}")
             facts = json.loads(m.group(0))
             facts["looked_up_by"] = model_name
             return facts
+
     raise last_err or RuntimeError("spec lookup failed")
 
 
