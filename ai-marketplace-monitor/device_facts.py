@@ -15,8 +15,12 @@ recalling them.
 
 Sources
 -------
-LineageOS support : the official wiki's device data on GitHub. Authoritative
-                    and free -- this is the actual list the project ships.
+LineageOS support : the project's own build API. NOTE this covers OFFICIAL
+                    builds only. Verified against the full wiki archive (735
+                    device files, discontinued ones included): a device with
+                    only unofficial/XDA builds -- e.g. the Galaxy S21 -- does
+                    not appear at all. "not official" therefore does NOT mean
+                    "cannot run LineageOS".
 AnTuTu / RAM      : Groq's agentic `groq/compound` model, which performs real
                     web searches server-side. Spec sites (kimovil, nanoreview)
                     return HTTP 403 to scripts, so scraping them directly is
@@ -42,6 +46,10 @@ from typing import Any, Dict, List, Optional
 
 CACHE_DIR = Path.home() / ".ai-marketplace-monitor"
 FACTS_CACHE = CACHE_DIR / "device_facts.json"
+# Hand-maintained truth that beats anything looked up. For facts you know and
+# the automated sources get wrong or cannot see (unofficial ROM support,
+# benchmark scores the model misremembers). Same shape as a cache entry.
+OVERRIDES = CACHE_DIR / "device_facts_overrides.json"
 LINEAGE_CACHE = CACHE_DIR / "lineageos_devices.json"
 LINEAGE_TTL = 7 * 24 * 3600  # the supported-device list changes slowly
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -218,9 +226,15 @@ def device_facts(model: str, refresh: bool = False, offline: bool = False) -> Di
         facts["specs_error"] = "offline" if offline else "GROQ_API_KEY not set"
 
     lo = lineage_supported(model)
-    facts["lineageos"] = bool(lo)
+    facts["lineageos_official"] = bool(lo)
     if lo:
         facts["lineageos_device"] = f"{lo['vendor']} {lo['name']} ({lo['codename']})".strip()
+
+    # Manual overrides win over everything above.
+    for ov_key, ov in _load(OVERRIDES).items():
+        if ov_key and ov_key in key:
+            facts.update(ov)
+            facts["overridden"] = True
 
     facts["cached_at"] = int(time.time())
     cache[key] = facts
@@ -239,7 +253,12 @@ def summarize(facts: Dict[str, Any]) -> str:
         bits.append(f"typical used price ~EUR {facts['used_price_eur']}")
     if facts.get("release_year"):
         bits.append(f"released {facts['release_year']}")
-    bits.append("LineageOS: " + ("SUPPORTED" if facts.get("lineageos") else "not supported"))
+    if facts.get("lineageos_unofficial"):
+        bits.append("LineageOS: unofficial build available")
+    elif facts.get("lineageos_official"):
+        bits.append("LineageOS: OFFICIAL support")
+    else:
+        bits.append("LineageOS: no official build (unofficial may still exist)")
     if facts.get("specs_error"):
         bits.append(f"(spec lookup failed: {facts['specs_error'][:60]})")
     return "; ".join(bits)
