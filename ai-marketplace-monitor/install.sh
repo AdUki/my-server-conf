@@ -21,7 +21,11 @@ fi
 # 2. the package, from the fork
 if [ ! -x "$VENV/bin/ai-marketplace-monitor" ] || [ "${1:-}" = "--upgrade" ]; then
     echo "==> installing ai-marketplace-monitor from fork"
-    "$VENV/bin/pip" install --quiet --upgrade "$FORK"
+    # --force-reinstall --no-deps: the fork keeps upstream's version string
+    # (0.10.2), so plain --upgrade sees the requirement as already satisfied
+    # and silently installs nothing when new commits land. --no-deps keeps it
+    # quick, since dependencies do not change between fork commits.
+    "$VENV/bin/pip" install --quiet --force-reinstall --no-deps "$FORK"
 else
     echo "==> package already installed (pass --upgrade to refresh)"
 fi
