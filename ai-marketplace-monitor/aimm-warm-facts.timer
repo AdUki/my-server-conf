@@ -2,10 +2,11 @@
 Description=Periodically resolve queued device specs
 
 [Timer]
-# Hourly, offset from the monitor's own search cycle. Lookups are slow and share
+# Every 15min: lookups are slow and rate-limited, so a batch that stops
+# early on a busy provider gets retried sooner rather than waiting an hour. Lookups are slow and share
 # the provider's rate limit with the monitor, so they run apart from it.
-OnBootSec=15min
-OnUnitActiveSec=1h
+OnBootSec=5min
+OnUnitActiveSec=15min
 Persistent=true
 
 [Install]

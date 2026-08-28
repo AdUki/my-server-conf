@@ -51,6 +51,23 @@ base_url = 'https://api.groq.com/openai/v1'
 model = 'openai/gpt-oss-120b'
 max_retries = 2
 
+# Each Groq model carries its OWN 1000 requests/day, so listing more of them
+# multiplies the daily ceiling rather than sharing one pool. Verified per
+# model against x-ratelimit-limit-requests. Ordered strongest first.
+[ai.groq_oss20]
+provider = 'openai'
+api_key = '${GROQ_API_KEY}'
+base_url = 'https://api.groq.com/openai/v1'
+model = 'openai/gpt-oss-20b'
+max_retries = 2
+
+[ai.groq_qwen36]
+provider = 'openai'
+api_key = '${GROQ_API_KEY}'
+base_url = 'https://api.groq.com/openai/v1'
+model = 'qwen/qwen3.6-27b'
+max_retries = 2
+
 # ---------------------------------------------------------------------
 # FALLBACKS: Google Gemini.
 # Google's free tier allows only 20 requests PER DAY PER MODEL
@@ -113,7 +130,12 @@ currency = 'EUR'
 # displayed location text (whatever Facebook shows, e.g. "Fairfield, CA"),
 # independent of shipping settings -- so shipping/recommended listings from
 # outside Slovakia get dropped without also dropping genuine local supply.
-seller_locations = ['Bratislava', 'Trnava', 'Senec', 'Pezinok', 'Malacky', 'Modra', 'Slovensko', 'Slovakia']
+# Location filter, centred on Hviezdoslavov: everything within roughly 30km
+# (Podunajsko, Bratislava and its boroughs, the Senec and Šamorín areas).
+# Both spellings of every name are listed because this tool's matching is
+# case-insensitive but NOT accent-insensitive -- "Dunajska Luzna" does not
+# match "Dunajská Lužná", and sellers write it either way.
+seller_locations = ['Hviezdoslavov', 'Kvetoslavov', 'Miloslavov', 'Dunajská Lužná', 'Dunajska Luzna', 'Rovinka', 'Kalinkovo', 'Hamuliakovo', 'Šamorín', 'Samorin', 'Čilistov', 'Cilistov', 'Mliečno', 'Mliecno', 'Bučuháza', 'Bucuhaza', 'Šulany', 'Sulany', 'Báč', 'Bac', 'Blatná na Ostrove', 'Blatna na Ostrove', 'Štvrtok na Ostrove', 'Stvrtok na Ostrove', 'Lehnice', 'Macov', 'Trnávka', 'Trnavka', 'Kyselica', 'Vojka nad Dunajom', 'Dobrohošť', 'Dobrohost', 'Horný Bar', 'Horny Bar', 'Trstená na Ostrove', 'Trstena na Ostrove', 'Nové Košariská', 'Nove Kosariska', 'Dunajská Streda', 'Dunajska Streda', 'Bratislava', 'Petržalka', 'Petrzalka', 'Ružinov', 'Ruzinov', 'Podunajské Biskupice', 'Podunajske Biskupice', 'Vrakuňa', 'Vrakuna', 'Nové Mesto', 'Nove Mesto', 'Staré Mesto', 'Stare Mesto', 'Karlova Ves', 'Dúbravka', 'Dubravka', 'Lamač', 'Lamac', 'Devín', 'Devin', 'Devínska Nová Ves', 'Devinska Nova Ves', 'Rača', 'Raca', 'Vajnory', 'Jarovce', 'Rusovce', 'Čunovo', 'Cunovo', 'Záhorská Bystrica', 'Zahorska Bystrica', 'Most pri Bratislave', 'Malinovo', 'Zálesie', 'Zalesie', 'Ivanka pri Dunaji', 'Bernolákovo', 'Bernolakovo', 'Chorvátsky Grob', 'Chorvatsky Grob', 'Slovenský Grob', 'Slovensky Grob', 'Senec', 'Nová Dedinka', 'Nova Dedinka', 'Tomášov', 'Tomasov', 'Hrubá Borša', 'Hruba Borsa', 'Kostolná pri Dunaji', 'Kostolna pri Dunaji', 'Reca', 'Boldog', 'Hrubý Šúr', 'Hruby Sur', 'Kráľová pri Senci', 'Kralova pri Senci', 'Veľký Biel', 'Velky Biel', 'Igram', 'Blatné', 'Blatne', 'Svätý Jur', 'Svaty Jur', 'Pezinok', 'Modra', 'Limbach', 'Viničné', 'Vinicne', 'Stupava', 'Marianka', 'Borinka', 'Malacky', 'Zohor', 'Lozorno', 'Trnava', 'Galanta', 'Sládkovičovo', 'Sladkovicovo', 'Slovensko', 'Slovakia', 'Sereď', 'Sered', 'Orechová Potôň', 'Orechova Poton', 'Mostová', 'Mostova', 'Cífer', 'Cifer', 'Veľké Úľany', 'Velke Ulany', 'Jelka', 'Zlaté Klasy', 'Zlate Klasy', 'Čataj', 'Cataj', 'Nový Život', 'Novy Zivot', 'Michal na Ostrove', 'Hubice', 'Oľdza', 'Oldza', 'Rastice', 'Malá Paka', 'Mala Paka', 'Veľká Paka', 'Velka Paka', 'Kostolné Kračany', 'Kostolne Kracany', 'Povoda', 'Dolný Bar', 'Dolny Bar', 'Baloň', 'Balon', 'Topoľníky', 'Topolniky', 'Okoč', 'Okoc', 'Vozokany', 'Voderady', 'Zeleneč', 'Zelenec', 'Križovany nad Dudváhom', 'Krizovany nad Dudvahom', 'Vlky', 'Tureň', 'Turen', 'Čierna Voda', 'Cierna Voda', 'Pusté Úľany', 'Puste Ulany', 'Abrahám', 'Abraham']
 
 # Deliberately not set here: username/password are picked up straight from
 # the FACEBOOK_USERNAME / FACEBOOK_PASSWORD environment variables (loaded by
@@ -142,81 +164,52 @@ sort_by = 'new'                # catch freshly-listed deals before others snipe 
 # combinations you described live — the model applies whichever clause fits.
 extra_prompt = """
 You are hunting for exceptional smartphone and electronics deals for a buyer
-in Bratislava, Slovakia. Rate a listing 5 (great deal) if ANY of the
-following applies, and say explicitly which one in your one-line summary:
+in Bratislava, Slovakia.
 
-1. EXTREME UNDERPRICING: judge this against a REQUIRED DISCOUNT that grows
-   steeply (roughly exponentially, not a flat percentage) with the item's
-   typical resale value — a flat "half off" bar is trivially met by cheap
-   items and lets overpriced expensive items slip through (e.g. a Samsung
-   S25+ at €580 is only ~40% off its ~€950 resale value — NOT a deal, this
-   exact case was flagged as false-positive junk). First estimate the
-   item's realistic current used/refurbished resale value (not MSRP) for
-   its exact model and condition, using your own knowledge, then require:
-     - under €50 resale value  → ≥35% off to qualify
-     - €50–150                 → ≥45% off
-     - €150–350                → ≥55% off
-     - €350–700                → ≥65% off
-     - €700–1200               → ≥75% off
-     - over €1200              → ≥80% off
-   State the estimated resale value, the asking price, and the resulting
-   discount % in your summary so this is auditable, not just a vibe.
+RULE ZERO - PRICE IS MANDATORY. A listing can only be rated 5 if it is
+genuinely, steeply underpriced against its current second-hand market
+value. Nothing else can earn a 5 on its own. Good specs, a high quality
+score, nice condition, "matches the search", full battery health,
+LineageOS support - none of these qualify a listing by themselves. They
+only describe a phone the buyer would consider IF the price is already a
+steal. If the discount requirement below is not met, the maximum rating is
+3, no matter how good the device is.
 
-2. DECENT SPECS: a VERIFIED FACTS block is supplied above for most
-   devices, with a QUALITY x/100 rating already computed from the chip
-   benchmark, RAM and storage. When it is present, use it: QUALITY >= 55
-   is decent hardware, < 35 is weak. Do not override it with remembered
-   benchmark numbers -- that is exactly what produced wrong rejections
-   before. If no facts are given, fall back to the rule below.
+Judge every listing in this order:
 
-   Fallback / additional requirement: if the listing is a smartphone, it
-   must have MORE than
-   4GB of RAM — i.e. 6GB or more; a 4GB phone does NOT qualify. This is
-   the only spec requirement: there is deliberately no benchmark floor,
-   because benchmark scores were being guessed wrongly and rejecting
-   genuinely good phones. Use your knowledge of the specific model's RAM
-   configuration; if a model ships in several variants and the listing
-   does not say which, use the RAM stated in the listing title/description
-   when present, and otherwise judge by the variant most commonly sold.
-   State the RAM in your summary.
+1. REQUIRED DISCOUNT. Estimate the realistic current second-hand resale
+   value in Europe for this exact model and condition (not the original
+   MSRP, not the new price). Then compute the discount:
+       discount = (resale - asking) / resale
+   The MINIMUM is 50% off. Below 50% off, the rating cannot exceed 3.
+   More expensive items must be discounted harder, because a small
+   percentage off a pricey item is still a lot of money:
+     - resale under EUR 150   -> at least 50% off
+     - EUR 150 to 350         -> at least 55% off
+     - EUR 350 to 700         -> at least 60% off
+     - over EUR 700           -> at least 65% off
+   ALWAYS state the estimated resale value, the asking price and the
+   computed discount percentage in your summary, so the buyer can check
+   your arithmetic. If you cannot estimate the resale value with
+   reasonable confidence, rate 2 and say so - do not guess generously.
 
-3. LINEAGEOS-FLASHABLE (big plus): if the listing is a smartphone, check
-   whether that specific model is known to be supported (officially or via
-   an active unofficial build) by LineageOS or another major custom-ROM
-   community (e.g. it appears on the LineageOS wiki device list, or is a
-   well-known XDA-Developers custom-ROM target). If so, call this out
-   explicitly in the summary even if price/specs alone are unremarkable —
-   it means the phone can get a long-lived, de-Googled, up-to-date OS long
-   after the manufacturer stops supporting it.
+2. IS IT WORTH OWNING? Only for listings that already passed step 1.
+   A VERIFIED FACTS block is supplied above for most devices with a
+   QUALITY x/100 rating computed from the chip benchmark, RAM and
+   storage. Use it: at QUALITY below 35 the device is weak, so drop the
+   rating to 3 even if the price is good - a cheap bad phone is not a
+   deal. Smartphones should also have more than 4GB of RAM. If no facts
+   are given, judge conservatively rather than generously.
 
-4. BROKEN / DAMAGED / FOR-PARTS PHONES: these ARE wanted, but only at a
-   salvage price. The asking price must be at most 1/5 (20%) of what the
-   same model in normal working condition currently resells for — i.e. at
-   least 80% off. A cracked screen, dead battery, "na náhradné diely",
-   "nefunkčný", "rozbitý", water damage etc. is fine at that price and NOT
-   fine above it. Estimate the working-condition resale value, state it,
-   the asking price, and the resulting discount % in your summary. This
-   clause overrides the graduated curve in point 1 for damaged units. A
-   broken phone at only a normal used discount is a 1, not a deal.
+3. BONUS, NEVER A QUALIFIER. Mention these when present, but they can
+   never lift a listing that failed step 1:
+     - LineageOS or an active custom-ROM community for that exact model.
+     - Unusually good condition, full battery health, accessories.
 
-READ THE SELLER'S TEXT CAREFULLY. The facts block describes the MODEL;
-only the listing tells you about the actual UNIT being sold. Downgrade or
-reject on things stated (or conspicuously missing) in the description:
-  - It is not the device at all: a case, cover, screen protector, charger,
-    cable, box, or spare part that merely names the model. Rate 1.
-  - Damage or faults: cracked screen/back, dead or swollen battery, faulty
-    charging port, water damage, "nefunkčný", "rozbitý", "prasknutý",
-    Face ID / camera / speaker not working. These are only acceptable at
-    the salvage price in clause 4.
-  - Locked or encumbered: iCloud/Google account locked, network/SIM lock,
-    blacklisted IMEI, "na diely", missing IMEI, stolen-goods hints.
-  - Battery health figures, cycle counts, or "battery needs replacing".
-  - Missing essentials: no charger, no box, when that affects value.
-  - Vagueness where detail is expected: no condition stated, stock photos
-    only, refusal to show the actual device. Treat as a reason for
-    caution, not as neutral.
-State the decisive detail from the description in your summary, so the
-buyer can see WHY, e.g. "cracked back, priced as mint".
+4. BROKEN / DAMAGED / FOR-PARTS PHONES are wanted, but only at salvage
+   pricing: at most 1/5 (20%) of the working-condition resale value, i.e.
+   at least 80% off. A cracked, dead-battery or "na nahradne diely" unit
+   at a normal used discount is a 1, not a deal.
 
 A listing can qualify on more than one of these — mention all that apply.
 SCAM DETECTION -- rate 1 and say "SCAM" in the summary if ANY of these
@@ -312,10 +305,14 @@ condition = ['new', 'used_like_new', 'used_good']
 rating = 5
 
 [item.electronics]
-search_phrases = ['laptop', 'notebook', 'tablet', 'elektronika', 'iPad', 'MacBook', 'monitor', 'PlayStation', 'Xbox', 'konzola']
+# Monitors, desktops and consoles were removed: they produced junk alerts
+# (a 27" Acer monitor, an old desktop PC, a PS4 at EUR 140) and none of them
+# has a benchmark this tool can score, so the AI was judging them on prose
+# alone. Laptops and tablets stay - those it can score properly.
+search_phrases = ['laptop', 'notebook', 'tablet', 'iPad', 'MacBook']
 category = 'electronics'
 min_price = 20
-antikeywords = ['rozbitý', 'rozbity', 'poškodený', 'poskodeny', 'nefunkčný', 'nefunkcny', 'na náhradné diely', 'broken', 'for parts']
+antikeywords = ['rozbitý', 'rozbity', 'poškodený', 'poskodeny', 'nefunkčný', 'nefunkcny', 'na náhradné diely', 'broken', 'for parts', 'monitor', 'televízor', 'televizor', 'playstation', 'ps4', 'ps5', 'xbox', 'nintendo', 'konzola', 'stolný', 'stolny', 'desktop', 'počítač', 'pocitac', 'zostava', 'skrinka', 'grafická karta', 'graficka karta', 'základná doska', 'procesor', 'tlačiareň', 'tlaciaren']
 description = """
 Laptops, tablets, and other consumer electronics (not phones) that are
 extremely underpriced against the graduated discount curve in the prompt
