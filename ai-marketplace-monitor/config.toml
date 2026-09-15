@@ -69,6 +69,31 @@ model = 'qwen/qwen3.6-27b'
 max_retries = 2
 
 # ---------------------------------------------------------------------
+# Cerebras: a second free tier with its own ~1000/day allowance, entirely
+# separate from Groq's. Added because Groq's per-minute budget is shared
+# between listing evaluation AND the device-spec lookups, and when it runs out
+# BOTH stop: the spec queue sat at zero resolved per run for days while every
+# listing fell back to a model guessing resale values from memory.
+#
+# OpenAI-compatible, so it needs nothing but a base_url. Get a free key (no
+# card) at https://cloud.cerebras.ai and put it in secrets.env as
+# CEREBRAS_API_KEY. Until that key exists these two sections simply fail and
+# evaluation carries on down the chain, exactly like the Groq ones do.
+[ai.cerebras]
+provider = 'openai'
+api_key = '${CEREBRAS_API_KEY}'
+base_url = 'https://api.cerebras.ai/v1'
+model = 'gemma-4-31b'
+max_retries = 2
+
+[ai.cerebras_qwen]
+provider = 'openai'
+api_key = '${CEREBRAS_API_KEY}'
+base_url = 'https://api.cerebras.ai/v1'
+model = 'qwen-3.8-27b'
+max_retries = 2
+
+# ---------------------------------------------------------------------
 # FALLBACKS: Google Gemini.
 # Google's free tier allows only 20 requests PER DAY PER MODEL
 # (confirmed from the live 429 body: GenerateRequestsPerDayPerProjectPerModel,
@@ -118,7 +143,7 @@ search_city = 'bratislava'
 # Facebook radius for European cities is shown in km in the UI. 50km covers
 # greater Bratislava plus nearby towns (Trnava, Senec, Pezinok, Malacky...).
 # Widen this if you want to catch deals across more of Slovakia.
-radius = 50
+radius = 80
 currency = 'EUR'
 # TESTED LIVE and reverted: deliveryMethod=local_pick_up stacked with the
 # other active filters (category, minPrice, condition, brand query) made
@@ -135,7 +160,11 @@ currency = 'EUR'
 # Both spellings of every name are listed because this tool's matching is
 # case-insensitive but NOT accent-insensitive -- "Dunajska Luzna" does not
 # match "Dunajská Lužná", and sellers write it either way.
-seller_locations = ['Hviezdoslavov', 'Kvetoslavov', 'Miloslavov', 'Dunajská Lužná', 'Dunajska Luzna', 'Rovinka', 'Kalinkovo', 'Hamuliakovo', 'Šamorín', 'Samorin', 'Čilistov', 'Cilistov', 'Mliečno', 'Mliecno', 'Bučuháza', 'Bucuhaza', 'Šulany', 'Sulany', 'Báč', 'Bac', 'Blatná na Ostrove', 'Blatna na Ostrove', 'Štvrtok na Ostrove', 'Stvrtok na Ostrove', 'Lehnice', 'Macov', 'Trnávka', 'Trnavka', 'Kyselica', 'Vojka nad Dunajom', 'Dobrohošť', 'Dobrohost', 'Horný Bar', 'Horny Bar', 'Trstená na Ostrove', 'Trstena na Ostrove', 'Nové Košariská', 'Nove Kosariska', 'Dunajská Streda', 'Dunajska Streda', 'Bratislava', 'Petržalka', 'Petrzalka', 'Ružinov', 'Ruzinov', 'Podunajské Biskupice', 'Podunajske Biskupice', 'Vrakuňa', 'Vrakuna', 'Nové Mesto', 'Nove Mesto', 'Staré Mesto', 'Stare Mesto', 'Karlova Ves', 'Dúbravka', 'Dubravka', 'Lamač', 'Lamac', 'Devín', 'Devin', 'Devínska Nová Ves', 'Devinska Nova Ves', 'Rača', 'Raca', 'Vajnory', 'Jarovce', 'Rusovce', 'Čunovo', 'Cunovo', 'Záhorská Bystrica', 'Zahorska Bystrica', 'Most pri Bratislave', 'Malinovo', 'Zálesie', 'Zalesie', 'Ivanka pri Dunaji', 'Bernolákovo', 'Bernolakovo', 'Chorvátsky Grob', 'Chorvatsky Grob', 'Slovenský Grob', 'Slovensky Grob', 'Senec', 'Nová Dedinka', 'Nova Dedinka', 'Tomášov', 'Tomasov', 'Hrubá Borša', 'Hruba Borsa', 'Kostolná pri Dunaji', 'Kostolna pri Dunaji', 'Reca', 'Boldog', 'Hrubý Šúr', 'Hruby Sur', 'Kráľová pri Senci', 'Kralova pri Senci', 'Veľký Biel', 'Velky Biel', 'Igram', 'Blatné', 'Blatne', 'Svätý Jur', 'Svaty Jur', 'Pezinok', 'Modra', 'Limbach', 'Viničné', 'Vinicne', 'Stupava', 'Marianka', 'Borinka', 'Malacky', 'Zohor', 'Lozorno', 'Trnava', 'Galanta', 'Sládkovičovo', 'Sladkovicovo', 'Slovensko', 'Slovakia', 'Sereď', 'Sered', 'Orechová Potôň', 'Orechova Poton', 'Mostová', 'Mostova', 'Cífer', 'Cifer', 'Veľké Úľany', 'Velke Ulany', 'Jelka', 'Zlaté Klasy', 'Zlate Klasy', 'Čataj', 'Cataj', 'Nový Život', 'Novy Zivot', 'Michal na Ostrove', 'Hubice', 'Oľdza', 'Oldza', 'Rastice', 'Malá Paka', 'Mala Paka', 'Veľká Paka', 'Velka Paka', 'Kostolné Kračany', 'Kostolne Kracany', 'Povoda', 'Dolný Bar', 'Dolny Bar', 'Baloň', 'Balon', 'Topoľníky', 'Topolniky', 'Okoč', 'Okoc', 'Vozokany', 'Voderady', 'Zeleneč', 'Zelenec', 'Križovany nad Dudváhom', 'Krizovany nad Dudvahom', 'Vlky', 'Tureň', 'Turen', 'Čierna Voda', 'Cierna Voda', 'Pusté Úľany', 'Puste Ulany', 'Abrahám', 'Abraham']
+seller_locations = ['Hviezdoslavov', 'Kvetoslavov', 'Miloslavov', 'Dunajská Lužná', 'Dunajska Luzna', 'Rovinka', 'Kalinkovo', 'Hamuliakovo', 'Šamorín', 'Samorin', 'Čilistov', 'Cilistov', 'Mliečno', 'Mliecno', 'Bučuháza', 'Bucuhaza', 'Šulany', 'Sulany', 'Báč', 'Bac', 'Blatná na Ostrove', 'Blatna na Ostrove', 'Štvrtok na Ostrove', 'Stvrtok na Ostrove', 'Lehnice', 'Macov', 'Trnávka', 'Trnavka', 'Kyselica', 'Vojka nad Dunajom', 'Dobrohošť', 'Dobrohost', 'Horný Bar', 'Horny Bar', 'Trstená na Ostrove', 'Trstena na Ostrove', 'Nové Košariská', 'Nove Kosariska', 'Dunajská Streda', 'Dunajska Streda', 'Bratislava', 'Petržalka', 'Petrzalka', 'Ružinov', 'Ruzinov', 'Podunajské Biskupice', 'Podunajske Biskupice', 'Vrakuňa', 'Vrakuna', 'Nové Mesto', 'Nove Mesto', 'Staré Mesto', 'Stare Mesto', 'Karlova Ves', 'Dúbravka', 'Dubravka', 'Lamač', 'Lamac', 'Devín', 'Devin', 'Devínska Nová Ves', 'Devinska Nova Ves', 'Rača', 'Raca', 'Vajnory', 'Jarovce', 'Rusovce', 'Čunovo', 'Cunovo', 'Záhorská Bystrica', 'Zahorska Bystrica', 'Most pri Bratislave', 'Malinovo', 'Zálesie', 'Zalesie', 'Ivanka pri Dunaji', 'Bernolákovo', 'Bernolakovo', 'Chorvátsky Grob', 'Chorvatsky Grob', 'Slovenský Grob', 'Slovensky Grob', 'Senec', 'Nová Dedinka', 'Nova Dedinka', 'Tomášov', 'Tomasov', 'Hrubá Borša', 'Hruba Borsa', 'Kostolná pri Dunaji', 'Kostolna pri Dunaji', 'Reca', 'Boldog', 'Hrubý Šúr', 'Hruby Sur', 'Kráľová pri Senci', 'Kralova pri Senci', 'Veľký Biel', 'Velky Biel', 'Igram', 'Blatné', 'Blatne', 'Svätý Jur', 'Svaty Jur', 'Pezinok', 'Modra', 'Limbach', 'Viničné', 'Vinicne', 'Stupava', 'Marianka', 'Borinka', 'Malacky', 'Zohor', 'Lozorno', 'Trnava', 'Galanta', 'Sládkovičovo', 'Sladkovicovo', 'Slovensko', 'Slovakia', 'Sereď', 'Sered', 'Orechová Potôň', 'Orechova Poton', 'Mostová', 'Mostova', 'Cífer', 'Cifer', 'Veľké Úľany', 'Velke Ulany', 'Jelka', 'Zlaté Klasy', 'Zlate Klasy', 'Čataj', 'Cataj', 'Nový Život', 'Novy Zivot', 'Michal na Ostrove', 'Hubice', 'Oľdza', 'Oldza', 'Rastice', 'Malá Paka', 'Mala Paka', 'Veľká Paka', 'Velka Paka', 'Kostolné Kračany', 'Kostolne Kracany', 'Povoda', 'Dolný Bar', 'Dolny Bar', 'Baloň', 'Balon', 'Topoľníky', 'Topolniky', 'Okoč', 'Okoc', 'Vozokany', 'Voderady', 'Zeleneč', 'Zelenec', 'Križovany nad Dudváhom', 'Krizovany nad Dudvahom', 'Vlky', 'Tureň', 'Turen', 'Čierna Voda', 'Cierna Voda', 'Pusté Úľany', 'Puste Ulany', 'Abrahám', 'Abraham',
+    # Around Jelka (Galanta district), added so the villages east of
+    # Hviezdoslavov are in range too.
+    'Tomášikovo', 'Tomasikovo', 'Veľký Grob', 'Velky Grob', 'Trstice', 'Jahodná', 'Jahodna', 'Horné Saliby', 'Horne Saliby', 'Dolné Saliby', 'Dolne Saliby', 'Malá Mača', 'Mala Maca', 'Veľká Mača', 'Velka Maca', 'Váhovce', 'Vahovce', 'Matúškovo', 'Matuskovo', 'Košúty', 'Kosuty', 'Diakovce',
+]
 
 # Deliberately not set here: username/password are picked up straight from
 # the FACEBOOK_USERNAME / FACEBOOK_PASSWORD environment variables (loaded by
@@ -154,8 +183,8 @@ seller_locations = ['Hviezdoslavov', 'Kvetoslavov', 'Miloslavov', 'Dunajská Lu�
 # reused on every future run, so this should only be needed once.
 login_wait_time = 15
 
-search_interval = '30m'
-max_search_interval = '1h'    # jitter between 30m-1h so requests look less robotic
+search_interval = '1h'
+max_search_interval = '2h'    # jitter between 1h-2h so requests look less robotic and hit FB less often
 
 notify = 'me'
 sort_by = 'new'                # catch freshly-listed deals before others snipe them
@@ -181,13 +210,13 @@ Judge every listing in this order:
    value in Europe for this exact model and condition (not the original
    MSRP, not the new price). Then compute the discount:
        discount = (resale - asking) / resale
-   The MINIMUM is 50% off. Below 50% off, the rating cannot exceed 3.
+   The MINIMUM is 40% off. Below 40% off, the rating cannot exceed 3.
    More expensive items must be discounted harder, because a small
    percentage off a pricey item is still a lot of money:
-     - resale under EUR 150   -> at least 50% off
-     - EUR 150 to 350         -> at least 55% off
-     - EUR 350 to 700         -> at least 60% off
-     - over EUR 700           -> at least 65% off
+     - resale under EUR 150   -> at least 40% off
+     - EUR 150 to 350         -> at least 45% off
+     - EUR 350 to 700         -> at least 50% off
+     - over EUR 700           -> at least 55% off
    ALWAYS state the estimated resale value, the asking price and the
    computed discount percentage in your summary, so the buyer can check
    your arithmetic. If you cannot estimate the resale value with
@@ -289,7 +318,24 @@ min_price = 10
 # Brand searches like "Samsung" drag in TVs, monitors, washing machines,
 # watches and accessories -- all of which were being sent for AI scoring.
 keywords = ['iphone', 'galaxy', 'redmi', 'poco', 'xiaomi', 'huawei', 'honor', 'realme', 'oneplus', 'pixel', 'telefon', 'smartfon', 'mobil']
-antikeywords = ['televízor', 'televizor', 'monitor', 'práčka', 'chladnička', 'hodinky', 'watch', 'buds', 'slúchadlá', 'sluchadla', 'obal', 'kryt', 'puzdro', 'case', 'nabíjačka', 'nabijacka', 'charger', 'kábel', 'kabel', 'cable', 'sklo', 'fólia', 'folia', 'klávesnica', 'myš', 'notebook', 'laptop', 'konzola', 'práčky', 'http://', 'https://', 'www.', 'e-shop', 'eshop', 'objednávka', 'objednaj', 'doprava zdarma', 'dobierka', 'telegram', 'viber', 'whatsapp']
+# These match against title AND description (facebook.py check_listing), as a
+# plain substring with no notion of what the listing actually IS. The
+# in-the-box accessories were therefore rejecting the phones they came with:
+# a genuine "iPhone 15 Plus" was dropped for the words "nabíjačka" and "kábel"
+# appearing in its description, which is how most private sellers describe a
+# complete phone. Observed repeatedly on real iPhones, Xiaomis and Samsungs.
+#
+# So: obal/kryt/puzdro/case/nabíjačka/charger/kábel/cable/sklo/fólia/
+# klávesnica/myš are GONE. A listing that really is only a case still has to
+# clear `keywords` (it needs a model word), and is then rejected by the AI --
+# a wasted call, deliberately accepted, because missing a real phone costs
+# more than one call from a quota that chains across several models.
+#
+# What stays: words that name the PRODUCT rather than something in the box
+# with it (a phone ad does not say "televízor" or "chladnička"), and the
+# scam/off-platform signals, which are the reason this filter runs before the
+# AI at all.
+antikeywords = ['televízor', 'televizor', 'monitor', 'práčka', 'chladnička', 'hodinky', 'watch', 'buds', 'slúchadlá', 'sluchadla', 'notebook', 'laptop', 'konzola', 'práčky', 'http://', 'https://', 'www.', 'e-shop', 'eshop', 'objednávka', 'objednaj', 'doprava zdarma', 'dobierka', 'telegram', 'viber', 'whatsapp']
 description = """
 Any Android or iPhone smartphone worth buying: either extremely underpriced
 vs its normal second-hand market value, a budget phone with 4GB+ RAM and a
@@ -342,6 +388,15 @@ max_price = 30
 #
 # No condition filter either -- the default would exclude used_fair, which
 # is exactly where cheap/broken dryers live.
+# Require the word itself somewhere in the title or description. Without
+# this, every cheap thing Facebook loosely matched for "susicka" reached the
+# AI: a kitchen thermometer, a dress, cutlery, a child's chair and a baby
+# carrier all burned tokens from a budget of 8000 per minute, which is the
+# same budget the phone searches need. Stems, not whole words, so susicku /
+# susicky / susickou all count; both spellings, because matching is
+# accent-sensitive. Matched against title AND description, so a dryer listed
+# under a vague title still gets through.
+keywords = ['sušič', 'susic']
 antikeywords = ['sušička na ovocie', 'susicka na ovocie', 'sušička ovocia', 'sušička rúk', 'susicka ruk', 'vlasov', 'filament']
 description = """
 A clothes tumble dryer (susicka bielizne / susicka pradla) for at most
