@@ -166,8 +166,6 @@ class TestBenchmarkSelection(unittest.TestCase):
         self.assertLessEqual(r["score"], 45)
 
 
-if __name__ == "__main__":
-    unittest.main(verbosity=1)
 
 
 class TestBenchmarkScales(unittest.TestCase):
@@ -204,11 +202,11 @@ class TestFairPrice(unittest.TestCase):
     def test_matches_the_anchors_it_was_fitted_to(self):
         s21 = self.phone(800_000, 8)
         self.assertAlmostEqual(s21["fair_price_eur"], 220, delta=15)
-        self.assertAlmostEqual(s21["deal_price_eur"], 110, delta=10)
+        self.assertAlmostEqual(s21["deal_price_eur"], 132, delta=10)
 
     def test_users_examples_land_the_right_way(self):
         """S21 at EUR 120 is a deal; a junk phone at EUR 40 is not."""
-        self.assertLess(self.phone(800_000, 8)["deal_price_eur"] * 1.1, 130)
+        self.assertGreaterEqual(self.phone(800_000, 8)["deal_price_eur"], 120)
         self.assertLess(self.phone(150_000, 4)["deal_price_eur"], 40)
 
     def test_weak_devices_are_flagged_at_any_price(self):
@@ -248,6 +246,57 @@ class TestFairPrice(unittest.TestCase):
         for bad in ({"benchmark_score": "x"}, {"benchmark_score": True},
                     {"benchmark_score": -1}, {}):
             self.assertIsInstance(df.fair_price({"kind": "phone", **bad}), dict)
+
+
+class TestPerBenchmarkPricing(unittest.TestCase):
+    """Each benchmark scale prices on its OWN curve.
+
+    Converting every score into an "AnTuTu-equivalent" assumed the scales are
+    proportional. Fitted against the same second-hand prices the exponents are
+    0.83, 1.30, 1.42 and 2.02, so no ratio of ceilings reconciles them -- and
+    the error landed hardest at the ends, where deals are decided. The old
+    conversion valued an iPhone 16 Pro at EUR 302 against a market of ~800
+    (so a genuine bargain read as overpriced) and a Redmi Note 8 at EUR 136
+    against ~70 (so junk read as a deal).
+    """
+
+    def price(self, bench, score):
+        return df.fair_price({"kind": "phone", "benchmark_name": bench,
+                              "benchmark_score": score})["fair_price_eur"]
+
+    def test_iphones_track_their_market(self):
+        for score, market in ((4150, 70), (5371, 160), (10003, 420), (12905, 800)):
+            got = self.price("ios_cpumark", score)
+            self.assertLess(abs(got - market), 0.25 * market,
+                            f"ios_cpumark {score} -> {got}, market ~{market}")
+
+    def test_android_devices_track_their_market(self):
+        for score, market in ((5370, 70), (9624, 150), (11972, 220)):
+            got = self.price("passmark_device", score)
+            self.assertLess(abs(got - market), 0.25 * market,
+                            f"passmark_device {score} -> {got}, market ~{market}")
+
+    def test_each_scale_keeps_its_own_shape(self):
+        """A flagship iPhone must not be priced like a mid-range Android
+        that happens to carry a similar raw number."""
+        self.assertGreater(self.price("ios_cpumark", 12905),
+                           2 * self.price("android_cpumark", 5971))
+
+    def test_unknown_scale_gets_no_price(self):
+        """Better no price than one computed off the wrong curve."""
+        self.assertEqual(df.fair_price({"kind": "phone",
+                                        "benchmark_name": "geekbench6_multi",
+                                        "benchmark_score": 5000}), {})
+
+    def test_weak_floor_is_per_scale(self):
+        self.assertTrue(self.weak("passmark_device", 3000))
+        self.assertFalse(self.weak("passmark_device", 9624))
+        self.assertTrue(self.weak("ios_cpumark", 2000))
+        self.assertFalse(self.weak("ios_cpumark", 10003))
+
+    def weak(self, bench, score):
+        return bool(df.fair_price({"kind": "phone", "benchmark_name": bench,
+                                   "benchmark_score": score}).get("too_weak"))
 
 
 class TestDesktopCurve(unittest.TestCase):
@@ -385,3 +434,7 @@ class TestDeterministicRouting(unittest.TestCase):
         v = df.deterministic_deal(self.S21, "€100")
         for expected in ("asking", "fair price", "deal threshold", "benchmark"):
             self.assertIn(expected, v["comment"].lower())
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=1)
