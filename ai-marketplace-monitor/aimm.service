@@ -9,6 +9,12 @@ WorkingDirectory=%h/my-server-conf/ai-marketplace-monitor
 ExecStart=%h/my-server-conf/ai-marketplace-monitor/run.sh
 Restart=always
 RestartSec=30
+# SIGTERM only the main (Python) process: it closes Chromium itself, which
+# also deletes its /tmp profile. The default control-group mode signals the
+# Playwright driver and Chromium at the same moment, so the close fails and
+# the profile dirs pile up. Anything still alive after that gets SIGKILL.
+KillMode=mixed
+TimeoutStopSec=30
 
 [Install]
 WantedBy=default.target
