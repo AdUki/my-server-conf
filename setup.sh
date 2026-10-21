@@ -294,7 +294,8 @@ _mount_labeled() {
 #
 # Sets these globals for use by later install_* functions:
 #   STORAGE_ROOT        — bulk-data root (DATA disk, else $HOME)
-#   IMMICH_STORAGE_ROOT — Immich's UPLOAD_LOCATION / DB_DATA_LOCATION parent
+#   IMMICH_STORAGE_ROOT — fast storage for Immich's postgres/ and thumbs/
+#   IMMICH_LIBRARY_ROOT — bulk storage for Immich's library/ (originals, video)
 #   BACKUP_MOUNTPOINT   — where backup helpers will mount BACKUP on demand
 setup_disks() {
 	local root_label
@@ -325,6 +326,11 @@ setup_disks() {
 		IMMICH_STORAGE_ROOT="$STORAGE_ROOT/immich"
 		log "No BOOT disk; IMMICH_STORAGE_ROOT=$IMMICH_STORAGE_ROOT (on STORAGE_ROOT)"
 	fi
+
+	# Originals and encoded video don't fit on the fast disk, so the library
+	# always lives on STORAGE_ROOT. Only postgres and thumbs go on BOOT.
+	IMMICH_LIBRARY_ROOT="$STORAGE_ROOT/immich"
+	log "IMMICH_LIBRARY_ROOT=$IMMICH_LIBRARY_ROOT"
 
 	# --- BACKUP: fstab only with noauto,nofail; never mounted by setup.sh. ---
 	BACKUP_MOUNTPOINT=""
@@ -591,13 +597,14 @@ cleanup_legacy_stacks() {
 
 ###############################################################################
 install_immich() {
-	log "Installing Immich (storage at $IMMICH_STORAGE_ROOT)..."
+	log "Installing Immich (db/thumbs at $IMMICH_STORAGE_ROOT, library at $IMMICH_LIBRARY_ROOT)..."
 
 	# Ensure storage directories exist
-	ensure_dir "$IMMICH_STORAGE_ROOT/library"
+	ensure_dir "$IMMICH_LIBRARY_ROOT/library"
 	ensure_dir "$IMMICH_STORAGE_ROOT/postgres"
+	ensure_dir "$IMMICH_STORAGE_ROOT/thumbs"
 	ensure_owner "$IMMICH_STORAGE_ROOT" pi:pi
-	ensure_owner "$IMMICH_STORAGE_ROOT/library" pi:pi
+	ensure_owner "$IMMICH_LIBRARY_ROOT/library" pi:pi
 
 	local immich_dir="$SCRIPT_DIR/immich"
 	local env_file="$immich_dir/.env"
@@ -619,7 +626,8 @@ install_immich() {
 	if [ ! -f "$env_file" ]; then
 		log "Generating $env_file from .env.example"
 		run cp "$example_file" "$env_file"
-		run sed -i "s|^UPLOAD_LOCATION=.*|UPLOAD_LOCATION=$IMMICH_STORAGE_ROOT/library|" "$env_file"
+		run sed -i "s|^UPLOAD_LOCATION=.*|UPLOAD_LOCATION=$IMMICH_LIBRARY_ROOT/library|" "$env_file"
+		run sed -i "s|^THUMB_LOCATION=.*|THUMB_LOCATION=$IMMICH_STORAGE_ROOT/thumbs|" "$env_file"
 		run sed -i "s|^DB_DATA_LOCATION=.*|DB_DATA_LOCATION=$IMMICH_STORAGE_ROOT/postgres|" "$env_file"
 		if [ -n "${BACKUP_MOUNTPOINT:-}" ]; then
 			run sed -i "s|^BACKUP_PATH=.*|BACKUP_PATH=$BACKUP_MOUNTPOINT/immich/|" "$env_file"
@@ -631,8 +639,32 @@ install_immich() {
 		fi
 	fi
 
+	# .env files from before the separate thumbs mount: keep thumbs where they
+	# already are (inside UPLOAD_LOCATION) rather than start on an empty dir.
+	# Moving them to fast storage is a manual rsync + edit of THUMB_LOCATION.
+	if [ -f "$env_file" ] && ! grep -q '^THUMB_LOCATION=' "$env_file"; then
+		local upload_location
+		upload_location=$(sed -n 's/^UPLOAD_LOCATION=//p' "$env_file")
+		echo "THUMB_LOCATION=$upload_location/thumbs" | run tee -a "$env_file" > /dev/null
+	fi
+
 	# Bring up (idempotent — compose detects no change).
 	( cd "$immich_dir" && run sudo docker compose up -d )
+
+	# Weekly backup. Runs as root: the borg repo on BACKUP is root-owned.
+	if [ -n "${BACKUP_MOUNTPOINT:-}" ]; then
+		local cron_file="$immich_dir/immich-backup.cron.tmp"
+		printf '%s\n' \
+			"# Weekly Immich backup (borg + pg_dumpall) to the BACKUP disk. Managed by my-server-conf/setup.sh." \
+			"0 3 * * 1 root $immich_dir/do-backup.sh" > "$cron_file"
+		set_conf_file /etc/cron.d/immich-backup "$cron_file" || true
+		rm -f "$cron_file"
+	fi
+	# The pre-repo install ran the backup from root's crontab out of ~/apps/immich-app.
+	if sudo crontab -l 2>/dev/null | grep -q 'apps/immich-app/do-backup.sh'; then
+		log "Removing legacy ~/apps/immich-app backup entry from root's crontab"
+		sudo crontab -l | grep -v 'apps/immich-app/do-backup.sh' | run sudo crontab -
+	fi
 
 	# Wait briefly for health, then tear down the legacy install dir if migrating.
 	if [ -d "$legacy_dir" ] && [ -f "$env_file" ] && [ "$env_file" != "$legacy_dir/.env" ]; then

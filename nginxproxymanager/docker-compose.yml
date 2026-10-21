@@ -17,4 +17,4 @@ services:
       # custom location (not proxied to a separate process). Mounted under
       # /srv, not /data, so it's never confused with NPM's own /data above.
       # Read-only: NPM only ever needs to read these files.
-      - /media/data/www/sexscanner:/srv/sexscanner:ro
+      - /home/pi/www/sexscanner:/srv/sexscanner:ro

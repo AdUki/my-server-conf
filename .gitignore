@@ -9,3 +9,5 @@ immich/library/
 immich/postgres/
 immich/immich-app/
 ai-marketplace-monitor/.venv/
+__pycache__/
+ai-marketplace-monitor/debug_*.html
