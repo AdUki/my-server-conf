@@ -1,8 +1,10 @@
 # Managed by my-server-conf/setup.sh (setup_disks).
-# Keep udisks (and so Kodi, which auto-mounts drives through it) away from
-# partitions that are not meant to be mounted at boot: the BACKUP disk is
-# mounted on demand by the backup helpers and must stay spun down, and the
-# "oldroot"/"oldboot" leftovers of the previous system are reference copies.
-SUBSYSTEM=="block", ENV{ID_FS_LABEL}=="@BACKUP_LABEL@", ENV{UDISKS_IGNORE}="1"
-SUBSYSTEM=="block", ENV{ID_FS_LABEL}=="oldroot", ENV{UDISKS_IGNORE}="1"
-SUBSYSTEM=="block", ENV{ID_FS_LABEL}=="oldboot", ENV{UDISKS_IGNORE}="1"
+# Keep udisks clients (Kodi auto-mounts every removable drive it sees through
+# udisks) away from partitions that must not be mounted at boot: the BACKUP
+# disk is mounted on demand by the backup helpers and must stay spun down,
+# and the "oldroot"/"oldboot" leftovers of the previous system are reference
+# copies. UDISKS_SYSTEM marks them as internal (Kodi skips those), UDISKS_AUTO
+# disables auto-mount, UDISKS_IGNORE hides them from udisks altogether.
+SUBSYSTEM=="block", ENV{ID_FS_LABEL}=="@BACKUP_LABEL@", ENV{UDISKS_SYSTEM}="1", ENV{UDISKS_AUTO}="0", ENV{UDISKS_IGNORE}="1"
+SUBSYSTEM=="block", ENV{ID_FS_LABEL}=="oldroot", ENV{UDISKS_SYSTEM}="1", ENV{UDISKS_AUTO}="0", ENV{UDISKS_IGNORE}="1"
+SUBSYSTEM=="block", ENV{ID_FS_LABEL}=="oldboot", ENV{UDISKS_SYSTEM}="1", ENV{UDISKS_AUTO}="0", ENV{UDISKS_IGNORE}="1"

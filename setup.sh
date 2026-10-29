@@ -1104,6 +1104,14 @@ install_system_monitor() {
 }
 
 ###############################################################################
+# The marketplace monitor keeps its venv and Playwright browser out of git,
+# so a rebuilt OS needs install.sh (idempotent) before aimm.service can run.
+install_ai_marketplace_monitor() {
+	log "Installing AI Marketplace Monitor..."
+	run bash "$SCRIPT_DIR/ai-marketplace-monitor/install.sh"
+}
+
+###############################################################################
 enforce_user_pi
 
 log "Starting Raspberry Pi server setup..."
@@ -1127,6 +1135,7 @@ install_immich
 install_nginxproxymanager
 install_system_monitor
 install_kodi
+install_ai_marketplace_monitor
 
 if [ "$REBOOT_REQUIRED" = 1 ]; then
 	warn "Some changes (tmpfs /tmp and /var/log) only take full effect after a reboot."
