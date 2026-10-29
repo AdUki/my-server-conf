@@ -1003,6 +1003,13 @@ install_system_monitor() {
 	log "Installing System monitor..."
 
 	local sm_dir="$SCRIPT_DIR/system-monitor"
+	# A clone salvaged from a dying disk can have a broken object store;
+	# set it aside (its only local state is grafana/.env, re-seeded below)
+	# and clone again rather than fail on pull.
+	if [ -d "$sm_dir/.git" ] && ! git -C "$sm_dir" rev-parse --verify HEAD >/dev/null 2>&1; then
+		warn "system-monitor clone is corrupt; moving it aside and cloning again"
+		run mv "$sm_dir" "$sm_dir.corrupt-$(date +%Y%m%d-%H%M%S)"
+	fi
 	if [ -d "$sm_dir/.git" ]; then
 		( cd "$sm_dir" && run git pull --ff-only )
 	else
