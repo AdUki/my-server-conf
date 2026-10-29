@@ -676,9 +676,21 @@ _docker_migrate_root() {
 	run sudo mv /var/lib/docker "/var/lib/docker.migrated-$(date +%Y%m%d)"
 }
 
+_containerd_migrate_root() {
+	local new_root="$1"
+	[ -n "$new_root" ] || return 0
+	[ -d /var/lib/containerd ] || return 0
+	[ -e "$new_root" ] && return 0
+	log "Moving /var/lib/containerd to $new_root (one-time)"
+	ensure_dir "$(dirname "$new_root")"
+	run sudo rsync -aHAX /var/lib/containerd/ "$new_root/"
+	run sudo mv /var/lib/containerd "/var/lib/containerd.migrated-$(date +%Y%m%d)"
+}
+
 install_docker() {
-	local data_root
+	local data_root containerd_root=""
 	data_root=$(_docker_data_root)
+	[ -n "$data_root" ] && containerd_root="$STORAGE_ROOT/containerd"
 
 	# daemon.json first, so the very first start already uses it.
 	ensure_dir /etc/docker
@@ -694,26 +706,38 @@ install_docker() {
 
 	if [ -n "$data_root" ]; then
 		ensure_dir /etc/systemd/system/docker.service.d
-		local dropin_tmp="$SCRIPT_DIR/docker-wait-for-data.conf.tmp"
-		sed "s|@STORAGE_ROOT@|$STORAGE_ROOT|" "$SCRIPT_DIR/system/docker-wait-for-data.conf" > "$dropin_tmp"
-		if set_conf_file /etc/systemd/system/docker.service.d/wait-for-data.conf "$dropin_tmp"; then
+		ensure_dir /etc/systemd/system/containerd.service.d
+		ensure_dir /etc/containerd
+		local tmp="$SCRIPT_DIR/wait-for-data.conf.tmp"
+		sed "s|@STORAGE_ROOT@|$STORAGE_ROOT|" "$SCRIPT_DIR/system/docker-wait-for-data.conf" > "$tmp"
+		if set_conf_file /etc/systemd/system/docker.service.d/wait-for-data.conf "$tmp"; then
 			run sudo systemctl daemon-reload
 		fi
-		rm -f "$dropin_tmp"
+		sed "s|@STORAGE_ROOT@|$STORAGE_ROOT|" "$SCRIPT_DIR/system/containerd-wait-for-data.conf" > "$tmp"
+		if set_conf_file /etc/systemd/system/containerd.service.d/wait-for-data.conf "$tmp"; then
+			run sudo systemctl daemon-reload
+		fi
+		sed "s|@ROOT@|$containerd_root|" "$SCRIPT_DIR/system/containerd-config.toml" > "$tmp"
+		if set_conf_file /etc/containerd/config.toml "$tmp"; then
+			daemon_changed=1
+		fi
+		rm -f "$tmp"
 	fi
 
 	if ! command -v docker > /dev/null; then
 		_docker_migrate_root "$data_root"
+		_containerd_migrate_root "$containerd_root"
 		log "Installing Docker..."
 		curl -fsSL https://get.docker.com | run sh
 		return 0
 	fi
 
 	if [ $daemon_changed -eq 1 ]; then
-		log "Docker daemon.json changed; restarting docker"
-		run sudo systemctl stop docker.socket docker.service
+		log "Docker/containerd config changed; restarting both"
+		run sudo systemctl stop docker.socket docker.service containerd.service
 		_docker_migrate_root "$data_root"
-		run sudo systemctl start docker.service
+		_containerd_migrate_root "$containerd_root"
+		run sudo systemctl start containerd.service docker.service
 	else
 		log "Docker already installed."
 	fi
@@ -925,6 +949,23 @@ install_kodi() {
 	if ! systemctl is-active --quiet kodi.service 2>/dev/null; then
 		run sudo systemctl start kodi.service || \
 			warn "kodi.service failed to start (likely no display attached — fine for a test container)."
+	fi
+
+	# 1b. Kodi's temp dir (kodi.log, caches) on tmpfs. Without a display the
+	#     audio sink retries twice a second and the log alone wrote 1800 times
+	#     in three minutes. kodi.service recreates the tmpfs dir on each boot.
+	if [ -n "${LOW_WRITE_ROOTFS:-}" ]; then
+		local kodi_temp="$HOME/.kodi/temp"
+		if [ -d "$kodi_temp" ] && [ ! -L "$kodi_temp" ]; then
+			log "Moving $kodi_temp to tmpfs"
+			run sudo systemctl stop kodi.service
+			run rm -rf "$kodi_temp"
+		fi
+		run mkdir -p /tmp/kodi-temp
+		ensure_symlink /tmp/kodi-temp "$kodi_temp"
+		if ! systemctl is-active --quiet kodi.service 2>/dev/null; then
+			run sudo systemctl start kodi.service || true
+		fi
 	fi
 
 	# 2. Sources — write once. Don't clobber the user's library on later runs.

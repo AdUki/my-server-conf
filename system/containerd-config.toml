@@ -1,0 +1,5 @@
+# Managed by my-server-conf/setup.sh (install_docker).
+# Docker 29 keeps images and container layers in containerd, not in its own
+# data-root, so containerd's root moves to the DATA disk as well.
+version = 2
+root = "@ROOT@"
