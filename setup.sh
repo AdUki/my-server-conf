@@ -244,7 +244,8 @@ setup_essential_packages() {
 	apt_get upgrade -y
 
 	log "Installing essential packages..."
-	apt_get_install neovim curl wget rsync jq $INSTALL_PACKAGES
+	# git: system-monitor clone. borgbackup: immich/do-backup.sh. fatrace: rootfs-writes.sh.
+	apt_get_install neovim curl wget rsync jq git borgbackup fatrace $INSTALL_PACKAGES
 }
 
 ###############################################################################
@@ -533,13 +534,169 @@ install_transmission() {
 }
 
 ###############################################################################
+# Keep the root filesystem (the NVMe) quiet. The previous NVMe wore out under
+# months of constant small writes (journal, docker logs, prometheus, swap).
+# Everything that writes continuously goes to RAM or to the DATA HDD; the
+# NVMe is left with occasional writes (apt, config edits) plus the deliberate
+# Immich postgres/thumbs cache. See rootfs-writes.sh to check what is left.
+# Set LOW_WRITE_ROOTFS="" in config.conf to skip all of this.
+setup_low_write_rootfs() {
+	[ -n "${LOW_WRITE_ROOTFS:-}" ] || return 0
+	log "Reducing writes to the root filesystem..."
+
+	# 1. /tmp in RAM. Mounting over a live /tmp would hide files that running
+	#    services hold open, so the fstab entry takes effect on the next boot.
+	set_conf_line_to_file /etc/fstab "tmpfs /tmp " \
+		"tmpfs /tmp tmpfs defaults,noatime,nosuid,nodev,size=${TMPFS_TMP_SIZE:-512M} 0 0"
+	if ! mountpoint -q /tmp; then
+		REBOOT_REQUIRED=1
+	fi
+
+	# 2. Swap: no swapfile on the NVMe, compressed zram instead.
+	if dpkg-query -W -f='${Status}' dphys-swapfile 2>/dev/null | grep -q 'install ok installed'; then
+		log "Replacing dphys-swapfile with zram"
+		run sudo systemctl disable --now dphys-swapfile 2>/dev/null || true
+		apt_get purge -y dphys-swapfile
+		[ -f /var/swap ] && run sudo rm -f /var/swap
+	fi
+	apt_get_install zram-tools
+	local zram_tmp="$SCRIPT_DIR/zramswap.tmp"
+	sed "s|@ZRAM_SIZE_MB@|${ZRAM_SIZE_MB:-1024}|" "$SCRIPT_DIR/system/zramswap" > "$zram_tmp"
+	if set_conf_file /etc/default/zramswap "$zram_tmp"; then
+		run sudo systemctl restart zramswap.service
+	fi
+	rm -f "$zram_tmp"
+
+	# 3. Cap the journal. It lands on the HDD through the /var/log bind mount
+	#    below (or stays small on the NVMe when there is no DATA disk).
+	ensure_dir /etc/systemd/journald.conf.d
+	if set_conf_file /etc/systemd/journald.conf.d/low-write.conf "$SCRIPT_DIR/system/journald-low-write.conf"; then
+		run sudo systemctl restart systemd-journald
+	fi
+
+	# 4. /var/log on the DATA disk. Bind mount, nofail: without the HDD the
+	#    NVMe directory is used as before. Existing logs are copied once.
+	if [ "$STORAGE_ROOT" != "$HOME" ]; then
+		local log_dir="$STORAGE_ROOT/system/var-log"
+		if [ ! -d "$log_dir" ]; then
+			ensure_dir "$log_dir"
+			run sudo rsync -a /var/log/ "$log_dir/"
+		fi
+		set_conf_line_to_file /etc/fstab "$log_dir /var/log " \
+			"$log_dir /var/log none bind,nofail,x-systemd.requires-mounts-for=$STORAGE_ROOT 0 0"
+		if ! mountpoint -q /var/log; then
+			run sudo systemctl daemon-reload
+			run sudo mount /var/log
+			# Services that already hold log files open keep writing to the
+			# NVMe directory underneath until they are restarted.
+			run sudo systemctl restart systemd-journald
+			REBOOT_REQUIRED=1
+		fi
+	fi
+}
+
+###############################################################################
+install_tailscale() {
+	log "Installing Tailscale..."
+	local keyring=/usr/share/keyrings/tailscale-archive-keyring.gpg
+	local list=/etc/apt/sources.list.d/tailscale.list
+	local codename
+	codename=$(. /etc/os-release && echo "$VERSION_CODENAME")
+
+	if [ ! -f "$keyring" ]; then
+		run sudo curl -fsSL "https://pkgs.tailscale.com/stable/raspbian/$codename.noarmor.gpg" -o "$keyring"
+	fi
+	local list_tmp="$SCRIPT_DIR/tailscale.list.tmp"
+	echo "deb [signed-by=$keyring] https://pkgs.tailscale.com/stable/raspbian $codename main" > "$list_tmp"
+	if set_conf_file "$list" "$list_tmp"; then
+		apt_get update
+	fi
+	rm -f "$list_tmp"
+	apt_get_install tailscale
+
+	# No log upload to Tailscale and no local logtail buffer: the buffer
+	# files under /var/lib/tailscale grew to 40 MB and were rewritten all
+	# day on the NVMe.
+	local flags='FLAGS="--no-logs-no-support"'
+	if ! grep -Fxq "$flags" /etc/default/tailscaled 2>/dev/null; then
+		set_conf_line_to_file /etc/default/tailscaled "FLAGS=" "$flags"
+		run sudo systemctl restart tailscaled
+	fi
+	run sudo systemctl enable --now tailscaled
+
+	# Login is a browser flow and is never forced here. A restored
+	# /var/lib/tailscale/tailscaled.state keeps the node identity.
+	if ! tailscale status >/dev/null 2>&1; then
+		warn "Tailscale is installed but not logged in. Run: sudo tailscale up"
+	fi
+}
+
+###############################################################################
+# Docker's data-root (images, container logs, named volumes such as
+# prometheus/grafana data) goes to the DATA disk under LOW_WRITE_ROOTFS.
+# Immich's postgres and thumbs stay on the NVMe through their bind mounts.
+_docker_data_root() {
+	if [ -n "${LOW_WRITE_ROOTFS:-}" ] && [ "$STORAGE_ROOT" != "$HOME" ]; then
+		echo "$STORAGE_ROOT/docker"
+	fi
+}
+
+# One-time move of /var/lib/docker to the new data-root. Only runs while
+# docker is stopped (or not installed yet) and the new root does not exist,
+# so a salvaged volumes/ directory is carried over instead of being shadowed
+# by a freshly initialised root. The old directory is renamed, not deleted.
+_docker_migrate_root() {
+	local new_root="$1"
+	[ -n "$new_root" ] || return 0
+	[ -d /var/lib/docker ] || return 0
+	[ -e "$new_root" ] && return 0
+	log "Moving /var/lib/docker to $new_root (one-time)"
+	ensure_dir "$(dirname "$new_root")"
+	run sudo rsync -aHAX /var/lib/docker/ "$new_root/"
+	run sudo mv /var/lib/docker "/var/lib/docker.migrated-$(date +%Y%m%d)"
+}
+
 install_docker() {
-	if command -v docker > /dev/null; then
-		log "Docker already installed."
+	local data_root
+	data_root=$(_docker_data_root)
+
+	# daemon.json first, so the very first start already uses it.
+	ensure_dir /etc/docker
+	local daemon_tmp="$SCRIPT_DIR/daemon.json.tmp"
+	jq -n --arg root "$data_root" \
+		'{"log-driver": "json-file", "log-opts": {"max-size": "20m", "max-file": "3"}}
+		 + (if $root != "" then {"data-root": $root} else {} end)' > "$daemon_tmp"
+	local daemon_changed=0
+	if set_conf_file /etc/docker/daemon.json "$daemon_tmp"; then
+		daemon_changed=1
+	fi
+	rm -f "$daemon_tmp"
+
+	if [ -n "$data_root" ]; then
+		ensure_dir /etc/systemd/system/docker.service.d
+		local dropin_tmp="$SCRIPT_DIR/docker-wait-for-data.conf.tmp"
+		sed "s|@STORAGE_ROOT@|$STORAGE_ROOT|" "$SCRIPT_DIR/system/docker-wait-for-data.conf" > "$dropin_tmp"
+		if set_conf_file /etc/systemd/system/docker.service.d/wait-for-data.conf "$dropin_tmp"; then
+			run sudo systemctl daemon-reload
+		fi
+		rm -f "$dropin_tmp"
+	fi
+
+	if ! command -v docker > /dev/null; then
+		_docker_migrate_root "$data_root"
+		log "Installing Docker..."
+		curl -fsSL https://get.docker.com | run sh
 		return 0
 	fi
-	log "Installing Docker..."
-	curl -fsSL https://get.docker.com | run sh
+
+	if [ $daemon_changed -eq 1 ]; then
+		log "Docker daemon.json changed; restarting docker"
+		run sudo systemctl stop docker.socket docker.service
+		_docker_migrate_root "$data_root"
+		run sudo systemctl start docker.service
+	else
+		log "Docker already installed."
+	fi
 }
 
 ###############################################################################
@@ -646,6 +803,18 @@ install_immich() {
 		local upload_location
 		upload_location=$(sed -n 's/^UPLOAD_LOCATION=//p' "$env_file")
 		echo "THUMB_LOCATION=$upload_location/thumbs" | run tee -a "$env_file" > /dev/null
+	fi
+
+	# Disaster recovery: an empty postgres dir next to a library that has
+	# backups means the OS disk was lost. Load the newest nightly dump before
+	# the server can initialise an empty database. Thumbs that are missing are
+	# regenerated later by Immich's own job.
+	local db_dir upload_dir
+	db_dir=$(sed -n 's/^DB_DATA_LOCATION=//p' "$env_file")
+	upload_dir=$(sed -n 's/^UPLOAD_LOCATION=//p' "$env_file")
+	if [ ! -f "$db_dir/PG_VERSION" ] && ls "$upload_dir"/backups/immich-db-backup-*.sql.gz >/dev/null 2>&1; then
+		log "Immich database is empty but $upload_dir/backups has dumps; restoring the newest"
+		run "$immich_dir/restore-db.sh"
 	fi
 
 	# Bring up (idempotent — compose detects no change).
@@ -868,15 +1037,19 @@ enforce_user_pi
 
 log "Starting Raspberry Pi server setup..."
 
+REBOOT_REQUIRED=0
+
 load_configuration
 setup_essential_packages
 configure_locales
 setup_disks
 setup_storage_dirs
+setup_low_write_rootfs
 setup_groups
 install_cups
 install_samba
 install_transmission
+install_tailscale
 install_docker
 cleanup_legacy_stacks
 install_immich
@@ -884,4 +1057,7 @@ install_nginxproxymanager
 install_system_monitor
 install_kodi
 
+if [ "$REBOOT_REQUIRED" = 1 ]; then
+	warn "Some changes (tmpfs /tmp, /var/log on the HDD) only take full effect after a reboot."
+fi
 log "All done."

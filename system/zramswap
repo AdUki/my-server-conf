@@ -1,0 +1,5 @@
+# Managed by my-server-conf/setup.sh (setup_low_write_rootfs).
+# Compressed swap in RAM instead of dphys-swapfile's /var/swap on the NVMe.
+ALGO=zstd
+SIZE=@ZRAM_SIZE_MB@
+PRIORITY=100
