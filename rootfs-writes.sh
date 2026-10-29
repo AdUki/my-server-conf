@@ -8,6 +8,7 @@
 # anything that shows up every run is a candidate for RAM or the HDD.
 set -e
 SECS="${1:-60}"
+PATH="$PATH:/usr/sbin:/sbin"   # fatrace lives in /usr/sbin
 
 command -v fatrace >/dev/null || { echo "fatrace missing: sudo apt-get install fatrace" >&2; exit 1; }
 

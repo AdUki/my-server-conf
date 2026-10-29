@@ -1,0 +1,5 @@
+# Managed by my-server-conf/setup.sh (setup_disks).
+# Keep udisks (and so Kodi, which auto-mounts removable drives through it)
+# away from the BACKUP disk: it is mounted on demand by the backup helpers
+# and must stay unmounted and spun down the rest of the time.
+SUBSYSTEM=="block", ENV{ID_FS_LABEL}=="@BACKUP_LABEL@", ENV{UDISKS_IGNORE}="1"

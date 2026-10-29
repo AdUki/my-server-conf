@@ -348,6 +348,16 @@ setup_disks() {
 			ensure_dir /media/backup
 			BACKUP_MOUNTPOINT=/media/backup
 			log "BACKUP disk configured at /media/backup (mounted on demand)"
+			# noauto is not enough: udisks mounts it at boot on behalf of the
+			# Kodi session. Tell udisks to ignore the partition.
+			local rule_tmp="$SCRIPT_DIR/udisks-ignore-backup.rules.tmp"
+			sed "s|@BACKUP_LABEL@|$BACKUP_PARTITION_LABEL|" \
+				"$SCRIPT_DIR/system/99-udisks-ignore-backup.rules" > "$rule_tmp"
+			if set_conf_file /etc/udev/rules.d/99-udisks-ignore-backup.rules "$rule_tmp"; then
+				run sudo udevadm control --reload
+				run sudo udevadm trigger --subsystem-match=block
+			fi
+			rm -f "$rule_tmp"
 		else
 			warn "BACKUP partition LABEL=$BACKUP_PARTITION_LABEL not found; skipping"
 		fi
