@@ -1129,6 +1129,6 @@ install_system_monitor
 install_kodi
 
 if [ "$REBOOT_REQUIRED" = 1 ]; then
-	warn "Some changes (tmpfs /tmp, /var/log on the HDD) only take full effect after a reboot."
+	warn "Some changes (tmpfs /tmp and /var/log) only take full effect after a reboot."
 fi
 log "All done."
