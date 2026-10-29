@@ -475,12 +475,16 @@ install_samba() {
 	if sudo pdbedit -L 2>/dev/null | grep -q '^pi:'; then
 		:
 	else
+		# Not fatal: a rebuild with an empty config.local.conf must still get
+		# through Immich and the rest. Shares just stay inaccessible until
+		# `sudo smbpasswd -a pi` (or the variable is filled and setup re-run).
 		if [ -z "${SAMBA_PI_PASSWORD:-}" ]; then
-			error "SAMBA_PI_PASSWORD is not set in config.local.conf; cannot create Samba user non-interactively."
+			warn "SAMBA_PI_PASSWORD is not set in config.local.conf; Samba user 'pi' not created. Run: sudo smbpasswd -a pi"
+		else
+			log "Creating Samba user 'pi' (non-interactive)..."
+			printf '%s\n%s\n' "$SAMBA_PI_PASSWORD" "$SAMBA_PI_PASSWORD" | run sudo smbpasswd -s -a pi >/dev/null
+			changed=1
 		fi
-		log "Creating Samba user 'pi' (non-interactive)..."
-		printf '%s\n%s\n' "$SAMBA_PI_PASSWORD" "$SAMBA_PI_PASSWORD" | run sudo smbpasswd -s -a pi >/dev/null
-		changed=1
 	fi
 
 	if [ $changed -eq 1 ]; then
@@ -549,8 +553,9 @@ setup_low_write_rootfs() {
 	[ -n "${LOW_WRITE_ROOTFS:-}" ] || return 0
 	log "Reducing writes to the root filesystem..."
 
-	# 1. /tmp in RAM. Mounting over a live /tmp would hide files that running
-	#    services hold open, so the fstab entry takes effect on the next boot.
+	# 1. /tmp in RAM. Only the fstab entry is written; systemd mounts it on
+	#    its next daemon-reload (apt triggers one), hiding whatever was in
+	#    /tmp until then, so nothing in this script may keep state there.
 	set_conf_line_to_file /etc/fstab "tmpfs /tmp " \
 		"tmpfs /tmp tmpfs defaults,noatime,nosuid,nodev,size=${TMPFS_TMP_SIZE:-512M} 0 0"
 	if ! mountpoint -q /tmp; then
