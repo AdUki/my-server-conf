@@ -19,6 +19,12 @@ if [ ! -x "$VENV/bin/python" ]; then
 fi
 
 # 2. the package, from the fork
+if [ ! -x "$VENV/bin/playwright" ]; then
+    # Fresh venv (first install, or rebuilt after losing the disk): pull the
+    # dependencies in before the no-deps refresh below.
+    echo "==> installing ai-marketplace-monitor with dependencies"
+    "$VENV/bin/pip" install --quiet "$FORK"
+fi
 if [ ! -x "$VENV/bin/ai-marketplace-monitor" ] || [ "${1:-}" = "--upgrade" ]; then
     echo "==> installing ai-marketplace-monitor from fork"
     # --force-reinstall --no-deps: the fork keeps upstream's version string
