@@ -56,13 +56,18 @@ run() {
 
 # Wrap apt-get so noninteractive env vars survive sudo. Stops needrestart's
 # whiptail "Which services should be restarted?" dialog from hanging the
-# script when run via `sudo -i` or a non-TTY pipe.
+# script when run via `sudo -i` or a non-TTY pipe. The dpkg options keep a
+# locally modified conffile instead of prompting: without a terminal the
+# prompt reads EOF, dpkg marks the package half-configured and apt fails.
 apt_get() {
 	run sudo env \
 		DEBIAN_FRONTEND=noninteractive \
 		NEEDRESTART_MODE=a \
 		NEEDRESTART_SUSPEND=1 \
-		apt-get "$@"
+		apt-get \
+		-o Dpkg::Options::=--force-confdef \
+		-o Dpkg::Options::=--force-confold \
+		"$@"
 }
 
 # Install packages only if any are missing. Filters out fully-installed sets
