@@ -7,8 +7,11 @@ Wants=network.target
 User=pi
 Group=audio
 Type=simple
-# ~/.kodi/temp is a symlink into tmpfs (see setup.sh install_kodi).
-ExecStartPre=/bin/mkdir -p /tmp/kodi-temp
+# ~/.kodi/temp (kodi.log, caches) is a symlink into tmpfs (see setup.sh
+# install_kodi); the GPU shader cache goes there too, so Kodi does not touch
+# the NVMe at all while idle. Shaders recompile once per boot (seconds).
+ExecStartPre=/bin/mkdir -p /tmp/kodi-temp/mesa-shader-cache
+Environment=MESA_SHADER_CACHE_DIR=/tmp/kodi-temp/mesa-shader-cache
 ExecStart=/usr/bin/kodi-standalone
 Restart=on-failure
 RestartSec=5
