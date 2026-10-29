@@ -822,7 +822,9 @@ install_immich() {
 	local db_dir upload_dir
 	db_dir=$(sed -n 's/^DB_DATA_LOCATION=//p' "$env_file")
 	upload_dir=$(sed -n 's/^UPLOAD_LOCATION=//p' "$env_file")
-	if [ ! -f "$db_dir/PG_VERSION" ] && ls "$upload_dir"/backups/immich-db-backup-*.sql.gz >/dev/null 2>&1; then
+	# The postgres dir is 0700 and owned by the container's uid, so the
+	# existence check needs root.
+	if ! sudo test -f "$db_dir/PG_VERSION" && ls "$upload_dir"/backups/immich-db-backup-*.sql.gz >/dev/null 2>&1; then
 		log "Immich database is empty but $upload_dir/backups has dumps; restoring the newest"
 		run "$immich_dir/restore-db.sh"
 	fi
