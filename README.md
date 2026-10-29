@@ -9,7 +9,7 @@ matter when the OS disk is gone.
 | Label    | Device     | Holds                                                        |
 |----------|------------|--------------------------------------------------------------|
 | `rootfs` | NVMe       | OS, `~/my-server-conf`, Immich postgres + thumbs (fast cache) |
-| `data`   | HDD, `/media/data` | media, Immich library (originals, encoded video, nightly DB dumps), `/var/log`, Docker data-root |
+| `data`   | HDD, `/media/data` | media, Immich library (originals, encoded video, nightly DB dumps), Docker and containerd data |
 | `backup` | HDD, `/media/backup`, mounted on demand | Borg archives of the Immich library + weekly `pg_dumpall` |
 
 Only the NVMe is treated as disposable. Everything on it that is not a cache
@@ -37,7 +37,9 @@ rebuilt by `setup.sh`.
 
 ## Keeping the NVMe quiet
 
-`setup_low_write_rootfs` moves every constant writer off the root filesystem.
+`setup_low_write_rootfs` moves every constant writer off the root filesystem:
+logs (journal, `/var/log`, container logs) live in RAM and are gone after a
+reboot, swap is 2 GB of zram, Docker and containerd write to the HDD.
 Check what is left with
 
 ```

@@ -1,5 +1,8 @@
 # Managed by my-server-conf/setup.sh (setup_disks).
-# Keep udisks (and so Kodi, which auto-mounts removable drives through it)
-# away from the BACKUP disk: it is mounted on demand by the backup helpers
-# and must stay unmounted and spun down the rest of the time.
+# Keep udisks (and so Kodi, which auto-mounts drives through it) away from
+# partitions that are not meant to be mounted at boot: the BACKUP disk is
+# mounted on demand by the backup helpers and must stay spun down, and the
+# "oldroot"/"oldboot" leftovers of the previous system are reference copies.
 SUBSYSTEM=="block", ENV{ID_FS_LABEL}=="@BACKUP_LABEL@", ENV{UDISKS_IGNORE}="1"
+SUBSYSTEM=="block", ENV{ID_FS_LABEL}=="oldroot", ENV{UDISKS_IGNORE}="1"
+SUBSYSTEM=="block", ENV{ID_FS_LABEL}=="oldboot", ENV{UDISKS_IGNORE}="1"

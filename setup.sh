@@ -581,37 +581,36 @@ setup_low_write_rootfs() {
 	fi
 	apt_get_install zram-tools
 	local zram_tmp="$SCRIPT_DIR/zramswap.tmp"
-	sed "s|@ZRAM_SIZE_MB@|${ZRAM_SIZE_MB:-1024}|" "$SCRIPT_DIR/system/zramswap" > "$zram_tmp"
+	sed "s|@ZRAM_SIZE_MB@|${ZRAM_SIZE_MB:-2048}|" "$SCRIPT_DIR/system/zramswap" > "$zram_tmp"
 	if set_conf_file /etc/default/zramswap "$zram_tmp"; then
 		run sudo systemctl restart zramswap.service
 	fi
 	rm -f "$zram_tmp"
-
-	# 3. Cap the journal. It lands on the HDD through the /var/log bind mount
-	#    below (or stays small on the NVMe when there is no DATA disk).
-	ensure_dir /etc/systemd/journald.conf.d
-	if set_conf_file /etc/systemd/journald.conf.d/low-write.conf "$SCRIPT_DIR/system/journald-low-write.conf"; then
-		run sudo systemctl restart systemd-journald
+	if set_conf_file /etc/sysctl.d/99-zram.conf "$SCRIPT_DIR/system/99-sysctl-zram.conf"; then
+		run sudo sysctl -q -p /etc/sysctl.d/99-zram.conf
 	fi
 
-	# 4. /var/log on the DATA disk. Bind mount, nofail: without the HDD the
-	#    NVMe directory is used as before. Existing logs are copied once.
-	if [ "$STORAGE_ROOT" != "$HOME" ]; then
-		local log_dir="$STORAGE_ROOT/system/var-log"
-		if [ ! -d "$log_dir" ]; then
-			ensure_dir "$log_dir"
-			run sudo rsync -a /var/log/ "$log_dir/"
-		fi
-		set_conf_line_to_file /etc/fstab "$log_dir /var/log " \
-			"$log_dir /var/log none bind,nofail,x-systemd.requires-mounts-for=$STORAGE_ROOT 0 0"
-		if ! mountpoint -q /var/log; then
-			run sudo systemctl daemon-reload
-			run sudo mount /var/log
-			# Services that already hold log files open keep writing to the
-			# NVMe directory underneath until they are restarted.
-			run sudo systemctl restart systemd-journald
-			REBOOT_REQUIRED=1
-		fi
+	# 3. Logs in RAM only: volatile journal, /var/log on tmpfs. A previous
+	#    revision bind-mounted /var/log from the DATA disk; that fstab line
+	#    is removed if present.
+	ensure_dir /etc/systemd/journald.conf.d
+	local journald_changed=0
+	if set_conf_file /etc/systemd/journald.conf.d/low-write.conf "$SCRIPT_DIR/system/journald-low-write.conf"; then
+		journald_changed=1
+	fi
+	set_conf_file /etc/tmpfiles.d/var-log.conf "$SCRIPT_DIR/system/var-log-tmpfiles.conf" || true
+	if sudo grep -q " /var/log none bind" /etc/fstab; then
+		run sudo sed -i "\| /var/log none bind|d" /etc/fstab
+		run sudo systemctl daemon-reload
+	fi
+	set_conf_line_to_file /etc/fstab "tmpfs /var/log " \
+		"tmpfs /var/log tmpfs defaults,noatime,nosuid,nodev,mode=0755,size=${TMPFS_LOG_SIZE:-256M} 0 0"
+	if [ "$(findmnt -no FSTYPE /var/log 2>/dev/null)" != "tmpfs" ]; then
+		# Switching live would hide files daemons hold open; done at boot.
+		REBOOT_REQUIRED=1
+	fi
+	if [ $journald_changed -eq 1 ]; then
+		run sudo systemctl restart systemd-journald
 	fi
 }
 
@@ -695,8 +694,10 @@ install_docker() {
 	# daemon.json first, so the very first start already uses it.
 	ensure_dir /etc/docker
 	local daemon_tmp="$SCRIPT_DIR/daemon.json.tmp"
+	# Container logs go to journald (RAM, see setup_low_write_rootfs);
+	# `docker logs` still works with that driver.
 	jq -n --arg root "$data_root" \
-		'{"log-driver": "json-file", "log-opts": {"max-size": "20m", "max-file": "3"}}
+		'{"log-driver": "journald"}
 		 + (if $root != "" then {"data-root": $root} else {} end)' > "$daemon_tmp"
 	local daemon_changed=0
 	if set_conf_file /etc/docker/daemon.json "$daemon_tmp"; then
